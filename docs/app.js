@@ -95,20 +95,31 @@ function pooled(limit) {
   };
 }
 
-var fetchTitle = (function () {
+/**
+ * oEmbed is the only keyless source for a video's title — and, via author_name,
+ * for its channel's display name. One request answers both, so it is cached and
+ * shared rather than fetched twice, and it goes through a pool: fifteen rows
+ * firing at once got throttled and the channel headings silently stayed as raw
+ * @handles.
+ */
+var fetchMeta = (function () {
   var pool = pooled(6), cache = {};
   return function (videoId) {
-    if (cache[videoId]) return cache[videoId];
-    cache[videoId] = pool(function () {
-      return fetch('https://www.youtube.com/oembed?format=json&url=' +
-        encodeURIComponent('https://www.youtube.com/watch?v=' + videoId))
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (j) { return j && j.title; })
-        .catch(function () { return null; });
-    });
+    if (!cache[videoId]) {
+      cache[videoId] = pool(function () {
+        return fetch('https://www.youtube.com/oembed?format=json&url=' +
+          encodeURIComponent('https://www.youtube.com/watch?v=' + videoId))
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .catch(function () { return null; });
+      });
+    }
     return cache[videoId];
   };
 })();
+
+function fetchTitle(videoId) {
+  return fetchMeta(videoId).then(function (m) { return m && m.title; });
+}
 
 // ------------------------------------------------- playlist via the player --
 
@@ -183,28 +194,45 @@ var playlistReader = (function () {
 
 // -------------------------------------------------------------- rendering --
 
-var rows = [];        // [{ el, cards: [{el, videoId}], scroller }]
+var rows = [];        // filled rows, kept in Sheet order
 var focus = { row: 0, col: 0 };
 
-function buildRow(channel, videoIds) {
+/**
+ * A row's shell is created immediately, in Sheet order, so channels can be
+ * loaded concurrently without the finish order deciding what the viewer sees.
+ * The heading starts as the handle from the Sheet and is replaced by the real
+ * channel name once the first video's metadata arrives — there is no keyless
+ * endpoint that names a channel directly.
+ */
+function createRow(channel, order) {
   var row = document.createElement('section');
-  row.className = 'row';
+  row.className = 'row loading';
 
-  var h = document.createElement('h2');
-  h.textContent = channel.name || channel.id;
-  row.appendChild(h);
+  var heading = document.createElement('h2');
+  heading.textContent = channel.handle || channel.id;
+  row.appendChild(heading);
 
   var strip = document.createElement('div');
   strip.className = 'strip';
   row.appendChild(strip);
 
-  var rowIndex = rows.length;
-  var cards = videoIds.map(function (videoId, colIndex) {
+  rowsEl.appendChild(row);
+  return { el: row, heading: heading, strip: strip, cards: [], channel: channel, order: order };
+}
+
+function fillRow(record, videoIds) {
+  // A channel that yields nothing leaves no trace: an empty row is worse than
+  // no row, because it looks like something failed to load and never recovers.
+  if (!videoIds.length) {
+    if (record.el.parentNode) record.el.parentNode.removeChild(record.el);
+    return;
+  }
+
+  record.cards = videoIds.map(function (videoId, colIndex) {
     // Deliberately a div, not a <button>: Chrome blockifies everything inside a
     // button subtree, which turns display:-webkit-box into flow-root and
     // silently disables -webkit-line-clamp on the caption. Focus here is drawn
-    // and moved by this app rather than by the browser, so the element's native
-    // behaviour buys nothing.
+    // and moved by this app, so a button's native behaviour buys nothing.
     var card = document.createElement('div');
     card.className = 'card';
     card.setAttribute('role', 'button');
@@ -224,27 +252,42 @@ function buildRow(channel, videoIds) {
     cap.textContent = '…';
     body.appendChild(cap);
 
-    card.addEventListener('click', function () { play(rowIndex, colIndex); });
-    strip.appendChild(card);
+    card.addEventListener('click', function () {
+      play(rows.indexOf(record), colIndex);
+    });
+    record.strip.appendChild(card);
 
     return { el: card, videoId: videoId, cap: cap };
   });
 
-  rowsEl.appendChild(row);
-  var record = { el: row, strip: strip, cards: cards, channel: channel };
+  record.el.classList.remove('loading');
   rows.push(record);
+  rows.sort(function (a, b) { return a.order - b.order; });
   observeTitles(record);
-  return record;
+
+  // The first video's metadata also carries the channel's display name; the
+  // same cached request serves that card's caption.
+  fetchMeta(videoIds[0]).then(function (meta) {
+    if (meta && meta.author_name) {
+      record.channel.name = meta.author_name;
+      record.heading.textContent = meta.author_name;
+    }
+  });
+
+  if (stageEl.hidden) applyFocus();
 }
 
-/** Titles cost one request each, so only fetch them for cards the viewer can
- *  actually see — a sixty-card row would otherwise fire sixty requests up front. */
+/**
+ * A title costs one request each, so only the cards the viewer can actually
+ * reach get one — a row of sixty would otherwise fire sixty requests the moment
+ * it appears, for cards nobody has scrolled to.
+ */
 function observeTitles(record) {
   var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) {
-      if (!e.isIntersecting) return;
-      io.unobserve(e.target);
-      var card = record.cards.filter(function (c) { return c.el === e.target; })[0];
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      io.unobserve(entry.target);
+      var card = record.cards.filter(function (c) { return c.el === entry.target; })[0];
       if (!card) return;
       fetchTitle(card.videoId).then(function (title) {
         card.title = title || '';
@@ -257,7 +300,11 @@ function observeTitles(record) {
 
 // --------------------------------------------------------------- focusing --
 
-function applyFocus() {
+/** Rows arrive out of order and are then sorted into Sheet order, so the
+ *  highlight has to be redrawn whenever the list changes — otherwise it stays
+ *  on whichever row happened to load first. Scrolling is only wanted when the
+ *  viewer actually pressed something. */
+function applyFocus(scroll) {
   rows.forEach(function (r, ri) {
     r.cards.forEach(function (c, ci) {
       c.el.classList.toggle('focused', ri === focus.row && ci === focus.col);
@@ -266,7 +313,7 @@ function applyFocus() {
   var row = rows[focus.row];
   if (!row) return;
   var card = row.cards[focus.col];
-  if (card) {
+  if (card && scroll) {
     card.el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
     row.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
@@ -281,7 +328,7 @@ function move(dRow, dCol) {
   if (dCol) {
     focus.col = Math.max(0, Math.min(rows[focus.row].cards.length - 1, focus.col + dCol));
   }
-  applyFocus();
+  applyFocus(true);
 }
 
 // -------------------------------------------------------------- playback ---
@@ -420,29 +467,24 @@ function boot() {
         return;
       }
 
-      // Channels load one after another because there is a single probe player;
-      // each row appears as soon as its own list arrives.
-      var seq = Promise.resolve();
-      wanted.forEach(function (channel, i) {
-        seq = seq.then(function () {
-          if (!unresolved.length) setStatus('Đang tải kênh ' + (i + 1) + '/' + wanted.length + '…');
-          return playlistReader.read('UU' + channel.id.slice(2)).then(function (ids) {
-            if (!ids.length) return;
-            // oEmbed on the first video is also how the channel gets its display
-            // name — there is no keyless endpoint that names a channel directly.
-            return fetch('https://www.youtube.com/oembed?format=json&url=' +
-              encodeURIComponent('https://www.youtube.com/watch?v=' + ids[0]))
-              .then(function (r) { return r.ok ? r.json() : null; })
-              .then(function (meta) {
-                channel.name = (meta && meta.author_name) || channel.id;
-                buildRow(channel, ids);
-                if (rows.length === 1) applyFocus();
-              });
-          });
-        });
-      });
+      // Channels load concurrently, but only a few at a time: each one costs an
+      // iframe, and a TV has far less to spare than a desktop. Rows appear in
+      // Sheet order regardless of which channel finishes first.
+      var shells = wanted.map(function (channel, i) { return createRow(channel, i); });
+      var run = pooled(4);
+      var done = 0;
 
-      seq.then(function () {
+      Promise.all(shells.map(function (shell) {
+        return run(function () { return playlistReader.read('UU' + shell.channel.id.slice(2)); })
+          .then(function (ids) { return ids; }, function () { return []; })
+          .then(function (ids) {
+            fillRow(shell, ids);
+            done++;
+            if (!unresolved.length) {
+              setStatus(done < wanted.length ? 'Đang tải ' + done + '/' + wanted.length + '…' : '');
+            }
+          });
+      })).then(function () {
         if (!unresolved.length) setStatus('');
         if (!rows.length) setStatus('Không tải được video nào.', true);
       });

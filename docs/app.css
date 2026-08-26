@@ -181,3 +181,9 @@ html, body {
   opacity: 0;
   pointer-events: none;
 }
+
+/* A row whose videos have not arrived yet: the heading is already in place so
+   the screen has its final shape from the first moment, but nothing about it
+   invites a button press. */
+.row.loading h2 { color: var(--dim); }
+.row.loading .strip { min-height: 262px; }
