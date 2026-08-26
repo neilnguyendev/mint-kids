@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Mint Kids — keyless data spike</title>
+<style>
+  body{margin:0;background:#111;color:#eee;font:15px/1.5 ui-monospace,monospace}
+  #player{width:480px;height:270px;border:0;float:right;margin:8px}
+  h2{font:600 16px/1.4 system-ui;color:#9cf;margin:14px 8px 4px;clear:none}
+  .ok{color:#5f5}.err{color:#f77}.info{color:#ccc}
+  div.l{padding:1px 8px;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+<div id="player"></div>
+<div id="out"></div>
+<script>
+// Three unknowns, one page. Each must work from real browser JS, because a curl
+// with an Origin header proves nothing about what the browser will allow.
+var CHANNEL_ID = 'UCTl91e4cxOjpphrLuNXVQ2A';              // @Lingokids
+var UPLOADS    = 'UU' + CHANNEL_ID.slice(2);               // uploads playlist convention
+var SHEET_CSV  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vScJOEVp-KGJPXKnyS56qFBN-400qvNW_P1EUGBcGA9BfXJZV3VQUD_m2afqdFull9zxBJv3dpDsAmX/pub?gid=0&single=true&output=csv';
+
+var out = document.getElementById('out');
+function log(msg, cls) {
+  var d = document.createElement('div');
+  d.className = 'l ' + (cls || 'info');
+  d.textContent = msg;
+  out.appendChild(d);
+}
+function head(t) {
+  var h = document.createElement('h2'); h.textContent = t; out.appendChild(h);
+}
+
+log('page origin = ' + location.origin);
+
+// ---- TEST 1: Google Sheet CSV, fetched by the browser --------------------
+head('TEST 1 — doc danh sach kenh tu Google Sheet (CORS that)');
+fetch(SHEET_CSV)
+  .then(function (r) { log('HTTP ' + r.status, r.ok ? 'ok' : 'err'); return r.text(); })
+  .then(function (t) {
+    log('PASS — Sheet doc duoc tu browser', 'ok');
+    t.trim().split('\n').forEach(function (line, i) { log('  [' + i + '] ' + line); });
+  })
+  .catch(function (e) { log('FAIL — ' + e.message, 'err'); });
+
+// ---- TEST 2: oEmbed for a title, fetched by the browser ------------------
+head('TEST 2 — lay tieu de video qua oEmbed (CORS that)');
+fetch('https://www.youtube.com/oembed?format=json&url=' +
+      encodeURIComponent('https://www.youtube.com/watch?v=h9ib0SO5b2U'))
+  .then(function (r) { log('HTTP ' + r.status, r.ok ? 'ok' : 'err'); return r.json(); })
+  .then(function (j) {
+    log('PASS — oEmbed doc duoc tu browser', 'ok');
+    log('  title  = ' + j.title);
+    log('  author = ' + j.author_name);
+    log('  thumb  = ' + j.thumbnail_url);
+  })
+  .catch(function (e) { log('FAIL — ' + e.message, 'err'); });
+
+// ---- TEST 3: the real unknown — uploads playlist via the IFrame player ---
+head('TEST 3 — nap uploads playlist bang IFrame API, doc getPlaylist()');
+log('channel  = ' + CHANNEL_ID);
+log('uploads  = ' + UPLOADS);
+
+var tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+tag.onerror = function () { log('FAIL — khong tai duoc iframe_api', 'err'); };
+document.head.appendChild(tag);
+
+var player, reported = false;
+function report() {
+  if (reported) return;
+  var list = player && player.getPlaylist && player.getPlaylist();
+  if (!list || !list.length) return;
+  reported = true;
+  log('PASS — getPlaylist() tra ve ' + list.length + ' video', 'ok');
+  log('  (RSS chi cho 15 — con day la ca kho upload)', 'ok');
+  list.slice(0, 8).forEach(function (id, i) { log('  ' + i + ': ' + id); });
+  var d = player.getVideoData && player.getVideoData();
+  if (d) log('  video hien tai: ' + d.video_id + ' — ' + d.title);
+}
+
+window.onYouTubeIframeAPIReady = function () {
+  log('iframe_api loaded', 'ok');
+  player = new YT.Player('player', {
+    playerVars: { listType: 'playlist', list: UPLOADS, autoplay: 0, controls: 1 },
+    events: {
+      onReady: function () { log('player ready'); setTimeout(report, 1500); },
+      onStateChange: report,
+      onError: function (e) { log('player ERROR ' + e.data, 'err'); }
+    }
+  });
+  // Fallback: some builds only populate the list after a beat.
+  setTimeout(function () {
+    if (!reported) { report(); }
+    if (!reported) log('FAIL — getPlaylist() rong sau 6s', 'err');
+  }, 6000);
+};
+</script>
+</body>
+</html>

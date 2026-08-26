@@ -1,0 +1,25 @@
+{
+  "name": "mint-kids",
+  "version": "1.0.0",
+  "description": "Walled-garden YouTube player for a Samsung Tizen TV",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "serve": "python3 serve.py"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neilnguyendev/mint-kids.git"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/neilnguyendev/mint-kids/issues"
+  },
+  "homepage": "https://github.com/neilnguyendev/mint-kids#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  },
+  "private": true
+}
