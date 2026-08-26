@@ -3,14 +3,14 @@
         id="http://mintkids.local/spike" version="0.0.1" viewmodes="maximized">
     <!-- Hosted app: the TV loads this URL instead of a local file, so the page
          has a real http(s) origin and YouTube gets a usable Referer. -->
-    <content src="https://neilnguyendev.github.io/mint-kids/index.html"/>
+    <content src="http://192.168.1.6:8080/index.html"/>
 
     <!-- WARP: without this the app cannot reach any network resource. -->
     <access origin="*" subdomains="true"/>
     <tizen:allow-navigation>* *.youtube.com *.youtube-nocookie.com *.google.com *.googlevideo.com *.ytimg.com *.gstatic.com</tizen:allow-navigation>
     <tizen:content-security-policy>default-src * 'self' data: blob:; script-src * 'self' 'unsafe-inline' 'unsafe-eval'; style-src * 'self' 'unsafe-inline'; img-src * data: blob:; media-src * blob:; frame-src *; connect-src *;</tizen:content-security-policy>
 
-    <tizen:application id="MintKids00.MintKidsSpike" package="MintKids00" required_version="8.0"/>
+    <tizen:application id="MintKids00.MintKids" package="MintKids00" required_version="8.0"/>
     <tizen:profile name="tv"/>
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
@@ -19,5 +19,5 @@
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
     <icon src="icon.png"/>
-    <name>Mint Kids Spike</name>
+    <name>Mint Kids</name>
 </widget>
