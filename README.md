@@ -52,6 +52,23 @@ WebView caches the hosted entry page hard enough that a restart otherwise
 re-renders the old build without even contacting the server. Changing
 `index.html` or `config.xml` means repackaging and reinstalling the `.wgt`.
 
+## Screen time
+
+A countdown sits in the top-right corner and stays above the player, because the
+moment a child most needs to see time running out is mid-video. When it reaches
+zero the app says `Đã xem hết giờ hôm nay`, stops whatever is playing and stops
+responding to everything except leaving.
+
+The budget is **per day, not per session**. It is held in `localStorage` against
+today's date and reset on the first run of a new day — a countdown that starts
+over when the app restarts is defeated by turning the app off and on again. Time
+is spent whenever the app is open and on screen, browsing included, not only
+while a video plays. A gap longer than a few seconds is assumed to be the app
+having been suspended and is not charged, so switching the TV off overnight does
+not silently eat tomorrow's half hour.
+
+`QUOTA_MINUTES` at the top of `docs/app.js` is the only knob.
+
 ## Working on it
 
     npm run serve     # http://localhost:8080

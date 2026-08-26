@@ -191,3 +191,59 @@ html, body {
    invites a button press. */
 .row.loading h2 { color: var(--dim); }
 .row.loading .strip { min-height: 262px; }
+
+/* ---------------------------------------------------------- screen time --- */
+
+/* The countdown sits above the player (z 50) so it stays readable during a
+   video — that is the moment a child most needs to see time running out. */
+#clock {
+  position: fixed;
+  top: var(--safe);
+  right: var(--safe);
+  z-index: 60;
+  padding: 8px 20px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;  /* stops the pill twitching each second */
+  color: var(--ink);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+#clock.low {
+  color: #ffd166;
+  border-color: rgba(255, 209, 102, 0.55);
+}
+
+#clock.out { color: var(--danger); }
+
+/* Above everything, including the countdown: once time is up there is nothing
+   left to look at or press. */
+#timeup {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 14, 0.96);
+}
+#timeup[hidden] { display: none; }
+
+#timeup .panel { text-align: center; padding: 0 var(--safe); }
+
+#timeup .big {
+  font-size: 68px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+#timeup .small {
+  margin-top: 20px;
+  font-size: 32px;
+  color: var(--dim);
+}

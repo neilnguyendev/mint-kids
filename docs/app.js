@@ -21,6 +21,11 @@ var MAX_PER_ROW = 60;
 // to false to drop back to the grid after every video instead.
 var AUTOPLAY_NEXT = true;
 
+// Daily screen-time budget. It is spent whenever the app is open and on screen,
+// not only while a video plays — browsing the grid is screen time too.
+var QUOTA_MINUTES = 30;
+var QUOTA_KEY = 'mintkids.quota';
+
 var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27 };
 
 // ------------------------------------------------------------------ dom -----
@@ -30,13 +35,21 @@ app.id = 'app';
 app.innerHTML =
   '<header id="top"><h1>Mint Kids</h1><div id="status">Đang tải danh sách kênh…</div></header>' +
   '<main id="rows"></main>' +
-  '<div id="stage" hidden><div id="player"></div><div id="nowplaying"></div></div>';
+  '<div id="stage" hidden><div id="player"></div><div id="nowplaying"></div></div>' +
+  '<div id="clock"><span id="clock-time">--:--</span></div>' +
+  '<div id="timeup" hidden><div class="panel">' +
+    '<div class="big">Đã xem hết giờ hôm nay</div>' +
+    '<div class="small">Mai mình xem tiếp nhé</div>' +
+  '</div></div>';
 document.body.appendChild(app);
 
 var rowsEl = document.getElementById('rows');
 var statusEl = document.getElementById('status');
 var stageEl = document.getElementById('stage');
 var nowEl = document.getElementById('nowplaying');
+var clockEl = document.getElementById('clock');
+var clockTimeEl = document.getElementById('clock-time');
+var timeUpEl = document.getElementById('timeup');
 
 function setStatus(text, isError) {
   statusEl.textContent = text || '';
@@ -408,10 +421,116 @@ function closeStage() {
   applyFocus();
 }
 
+// ------------------------------------------------------------ screen time ---
+
+/**
+ * A daily budget, not a per-session one: a countdown that resets when the app
+ * restarts is defeated by turning the app off and on again. Time spent is kept
+ * in localStorage against today's date and reset on the first run of a new day.
+ *
+ * Storage can be unavailable — a TV with site data blocked, a private context —
+ * so every access is guarded and falls back to counting for this session only.
+ * A timer that runs is better than one that throws on startup.
+ */
+var quota = (function () {
+  var QUOTA_MS = QUOTA_MINUTES * 60 * 1000;
+  var memory = null;          // fallback when localStorage cannot be used
+  var lastTick = Date.now();
+  var exhausted = false;
+
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+
+  function read() {
+    try {
+      var raw = window.localStorage.getItem(QUOTA_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && parsed.day === todayKey() && typeof parsed.usedMs === 'number') {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    if (memory && memory.day === todayKey()) return memory;
+    return { day: todayKey(), usedMs: 0 };
+  }
+
+  function write(state) {
+    memory = state;
+    try { window.localStorage.setItem(QUOTA_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function remaining() {
+    return Math.max(0, QUOTA_MS - read().usedMs);
+  }
+
+  function render() {
+    var left = remaining();
+    var totalSeconds = Math.ceil(left / 1000);
+    var mm = Math.floor(totalSeconds / 60);
+    var ss = totalSeconds % 60;
+    clockTimeEl.textContent = mm + ':' + (ss < 10 ? '0' : '') + ss;
+    clockEl.classList.toggle('low', left <= 5 * 60 * 1000 && left > 0);
+    clockEl.classList.toggle('out', left === 0);
+  }
+
+  function spend() {
+    var now = Date.now();
+    var elapsed = now - lastTick;
+    lastTick = now;
+
+    // A suspended app — TV switched off, app backgrounded — can come back with
+    // an enormous gap. Charging that to the child would silently eat the day,
+    // so only time the app was actually on screen is counted.
+    if (document.hidden) return;
+    if (elapsed < 0 || elapsed > 5000) elapsed = 0;
+
+    var state = read();
+    state.usedMs += elapsed;
+    write(state);
+  }
+
+  function tick() {
+    spend();
+    render();
+    if (!exhausted && remaining() === 0) {
+      exhausted = true;
+      onExhausted();
+    }
+  }
+
+  function start() {
+    lastTick = Date.now();
+    render();
+    if (remaining() === 0) { exhausted = true; onExhausted(); }
+    setInterval(tick, 1000);
+    // Coming back from a suspend must not be billed as elapsed time.
+    document.addEventListener('visibilitychange', function () { lastTick = Date.now(); });
+  }
+
+  return { start: start, remaining: remaining, isExhausted: function () { return exhausted; } };
+})();
+
+function onExhausted() {
+  closeStage();
+  timeUpEl.hidden = false;
+}
+
 // ------------------------------------------------------------------ keys ---
 
 document.addEventListener('keydown', function (ev) {
   var code = ev.keyCode;
+
+  // Out of time: only leaving the app still works.
+  if (quota.isExhausted()) {
+    ev.preventDefault();
+    if (code === KEY.BACK) {
+      try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+    }
+    return;
+  }
   if (!stageEl.hidden) {
     if (code === KEY.BACK || code === KEY.ESC) { ev.preventDefault(); closeStage(); }
     else if (code === KEY.ENTER) {
@@ -492,4 +611,5 @@ function boot() {
     .catch(function (e) { setStatus('Lỗi: ' + e.message, true); });
 }
 
+quota.start();
 boot();
