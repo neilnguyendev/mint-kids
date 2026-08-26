@@ -62,7 +62,7 @@ html, body {
 .row { margin-bottom: 36px; }
 
 .row h2 {
-  margin: 0 0 14px var(--safe);
+  margin: 0 0 2px var(--safe);
   font-size: 28px;
   font-weight: 600;
   color: var(--ink);
@@ -76,7 +76,11 @@ html, body {
   gap: 20px;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 8px var(--safe) 18px;
+  /* The focused card grows by 6% and paints an outline 7px outside itself, so
+     the strip must reserve room above and below for it. overflow-y is hidden to
+     stop the strip scrolling vertically, and it will happily slice the top edge
+     of that outline off if the padding is too tight. */
+  padding: 18px var(--safe);
   scrollbar-width: none;
   scroll-behavior: smooth;
 }

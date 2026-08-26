@@ -117,6 +117,27 @@ test('titles are only fetched for cards the viewer can reach', async ({ page }) 
   expect(named).toBeLessThan(total);
 });
 
+test('the focus outline is never clipped by its row', async ({ page }) => {
+  // The focused card scales up and draws an outline outside itself, while the
+  // strip hides vertical overflow to stop itself scrolling. Too little padding
+  // and the strip slices the top edge of that outline off — which reads as a
+  // broken highlight rather than a tight layout.
+  await loadGrid(page);
+
+  const fits = await page.evaluate(() => {
+    const card = document.querySelector('.card.focused');
+    const strip = card.closest('.strip');
+    const cs = getComputedStyle(card);
+    const halo = parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset);
+    const c = card.getBoundingClientRect();
+    const s = strip.getBoundingClientRect();
+    return { topRoom: c.top - halo - s.top, bottomRoom: s.bottom - (c.bottom + halo) };
+  });
+
+  expect(fits.topRoom).toBeGreaterThanOrEqual(0);
+  expect(fits.bottomRoom).toBeGreaterThanOrEqual(0);
+});
+
 test('arrow keys move focus across and between rows', async ({ page }) => {
   await loadGrid(page);
 
