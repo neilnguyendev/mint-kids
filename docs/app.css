@@ -1,0 +1,10 @@
+html,body{margin:0;padding:0;background:#111;color:#eee;
+  font:16px/1.5 system-ui,sans-serif;height:100%;overflow:hidden}
+#player{position:absolute;inset:0;width:100%;height:100%;border:0}
+#banner{position:absolute;top:0;left:0;right:0;z-index:20;
+  background:linear-gradient(90deg,#ff6d00,#ffd600);color:#063;
+  font:700 34px/1.6 system-ui,sans-serif;text-align:center;letter-spacing:1px}
+#log{position:absolute;left:0;right:0;bottom:0;max-height:45%;overflow:auto;
+  background:rgba(0,0,0,.85);padding:12px 16px;
+  font:20px/1.45 ui-monospace,monospace;z-index:10}
+.ok{color:#5f5}.err{color:#f77}.info{color:#9cf}
