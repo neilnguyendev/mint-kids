@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { stubSheet } = require('./helpers');
 
 /**
  * The player screen has two modes, and the arrow keys mean different things in
@@ -14,6 +15,7 @@ const overVideo = (page) => page.evaluate(() => document.getElementById('app').c
 
 /** Open the grid, start the first video, and wait for the player to be usable. */
 async function startWatching(page) {
+  await stubSheet(page);
   await page.goto('/index.html');
   await expect(page.locator('.row:not(.loading)').first()).toBeVisible({ timeout: 90_000 });
   await page.waitForTimeout(2000);

@@ -26,6 +26,11 @@ var AUTOPLAY_NEXT = true;
 var QUOTA_MINUTES = 30;
 var QUOTA_KEY = 'mintkids.quota';
 
+// The channel list comes from a third party we do not control, so the wait for
+// it is bounded and the last good answer is kept as a fallback.
+var CHANNELS_CACHE_KEY = 'mintkids.channels';
+var SHEET_TIMEOUT_MS = 8000;
+
 var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27 };
 
 // How far one press of left/right jumps while a video is playing.
@@ -100,6 +105,53 @@ function readChannelCell(cells, handleMap) {
   var mapped = handleMap[name.toLowerCase()];
   return mapped ? { id: mapped, handle: name } : { handle: name };
 }
+
+/**
+ * A fetch that gives up. Without this, one slow response from Google leaves the
+ * screen sitting on "loading" forever — which on a TV is indistinguishable from
+ * a broken app, with no way for a child to recover.
+ */
+function fetchWithTimeout(url, ms) {
+  return new Promise(function (resolve, reject) {
+    var settled = false;
+    var timer = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      reject(new Error('quá ' + Math.round(ms / 1000) + ' giây không phản hồi'));
+    }, ms);
+    fetch(url).then(function (r) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r);
+    }, function (e) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(e);
+    });
+  });
+}
+
+/** Remembers the last channel list that loaded, so a failure to reach the Sheet
+ *  degrades to yesterday's list instead of an empty screen. The Sheet is still
+ *  tried first every launch: a channel the parent removes has to disappear
+ *  promptly, which a cache-first order would delay by a session. */
+var channelCache = {
+  read: function () {
+    try {
+      var raw = window.localStorage.getItem(CHANNELS_CACHE_KEY);
+      var parsed = raw && JSON.parse(raw);
+      if (parsed && parsed.csv) return parsed;
+    } catch (e) {}
+    return null;
+  },
+  write: function (csv) {
+    try {
+      window.localStorage.setItem(CHANNELS_CACHE_KEY, JSON.stringify({ csv: csv, at: Date.now() }));
+    } catch (e) {}
+  }
+};
 
 /** Runs jobs with a ceiling on how many are in flight, so a row of sixty
  *  cards does not open sixty sockets at once. */
@@ -650,11 +702,36 @@ document.addEventListener('keydown', function (ev) {
 // ------------------------------------------------------------------ boot ---
 
 function boot() {
+  var usedCache = false;
+
   Promise.all([
-    fetch(SHEET_CSV).then(function (r) {
-      if (!r.ok) throw new Error('Sheet trả về HTTP ' + r.status);
-      return r.text();
-    }),
+    fetchWithTimeout(SHEET_CSV, SHEET_TIMEOUT_MS)
+      .then(function (r) {
+        if (!r.ok) throw new Error('Sheet trả về HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function (csv) { channelCache.write(csv); return csv; })
+      .catch(function (e) {
+        // Reading the published Sheet from a browser is throttled hard, so a
+        // failure here is routine rather than exceptional. Fall back to the last
+        // live answer, then to the copy committed beside the app — which is
+        // same-origin and therefore always reachable, and is what makes a TV
+        // that has never had a successful live read still work.
+        var cached = channelCache.read();
+        if (cached) { usedCache = 'cache'; return cached.csv; }
+        return fetch('channels.json?t=' + Date.now())
+          .then(function (r) { return r.ok ? r.json() : null; })
+          // The snapshot failing too must not replace the message below with a
+          // raw fetch error; the viewer needs to know which thing is missing.
+          .catch(function () { return null; })
+          .then(function (snap) {
+            if (!snap || !snap.csv) {
+              throw new Error('không đọc được danh sách kênh (' + e.message + ')');
+            }
+            usedCache = 'snapshot';
+            return snap.csv;
+          });
+      }),
     // Same origin, so this one cannot fail on CORS; an empty map just means
     // every @handle in the Sheet gets reported as needing a channel id.
     fetch('handles.json?t=' + Date.now())
@@ -673,6 +750,11 @@ function boot() {
         else unresolved.push(got.handle);
       });
 
+      if (usedCache) {
+        setStatus(usedCache === 'snapshot'
+          ? 'Đang dùng danh sách kênh kèm theo app — chưa kết nối được tới Sheet'
+          : 'Đang dùng danh sách kênh đã lưu — chưa kết nối được tới Sheet', true);
+      }
       if (unresolved.length) {
         setStatus('Chưa dùng được: ' + unresolved.join(', ') +
           ' — chạy scripts/resolve-handles.py, hoặc dán link /channel/UC… vào Sheet', true);
@@ -695,12 +777,12 @@ function boot() {
           .then(function (ids) {
             fillRow(shell, ids);
             done++;
-            if (!unresolved.length) {
+            if (!unresolved.length && !usedCache) {
               setStatus(done < wanted.length ? 'Đang tải ' + done + '/' + wanted.length + '…' : '');
             }
           });
       })).then(function () {
-        if (!unresolved.length) setStatus('');
+        if (!unresolved.length && !usedCache) setStatus('');
         if (!rows.length) setStatus('Không tải được video nào.', true);
       });
     })

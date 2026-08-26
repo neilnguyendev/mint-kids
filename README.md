@@ -22,6 +22,27 @@ YouTube fetch the list on our behalf, so no cross-origin request is ever issued
 by this code. A test in `tests/data-access.spec.js` asserts RSS is still blocked,
 to stop a future refactor "simplifying" the indirection away.
 
+### The Sheet is unreliable, on purpose-built fallbacks
+
+Google throttles reads of the published Sheet from a browser origin hard —
+measured at three successes in eight consecutive tries, the rest hanging past
+twelve seconds. Server-side it answers in about a second every time, so this is
+per-origin rate limiting, not an outage. The app therefore never depends on it:
+
+1. the live Sheet, with an 8s timeout — authoritative when it answers, so a
+   channel the parent deletes disappears on the next launch
+2. the last live answer, cached in `localStorage`
+3. `docs/channels.json`, a copy committed beside the app — same-origin and so
+   always reachable, which is what makes a TV that has never managed a live read
+   still work
+
+The screen says which one it fell back to. `scripts/resolve-handles.py` refreshes
+both `handles.json` and `channels.json`, and retries, because the Sheet drops
+server-side requests too.
+
+Every UI test stubs the Sheet for the same reason; the live one has a single
+dedicated test that asserts it is reachable *at all* rather than on demand.
+
 A channel pasted into the Sheet as a `/channel/UC…` URL works the moment the
 Sheet is saved. A bare `@handle` cannot be resolved in the browser — youtube.com
 sends no CORS headers and oEmbed 404s on channel URLs — so handles are resolved

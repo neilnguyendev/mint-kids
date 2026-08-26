@@ -1,6 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
+const { stubSheet, FIXTURE_CHANNELS } = require('./helpers');
 
 /**
  * The browse screen: one horizontally scrolling row per channel, driven by the
@@ -10,37 +9,16 @@ const path = require('path');
 test.setTimeout(120_000);
 test.use({ viewport: { width: 1920, height: 1080 } });
 
-const SHEET_CSV =
-  'https://docs.google.com/spreadsheets/d/e/2PACX-1vScJOEVp-KGJPXKnyS56qFBN-400qvNW_P1EUGBcGA9BfXJZV3VQUD_m2afqdFull9zxBJv3dpDsAmX/pub?gid=0&single=true&output=csv';
-
-/** How many channels the app should manage to show, worked out from the same
- *  two inputs it uses. Hard-coding a number here would mean the suite breaks
- *  every time a channel is added to the Sheet. */
-async function expectedChannelCount() {
-  const csv = await fetch(SHEET_CSV).then((r) => r.text());
-  const handles = JSON.parse(
-    fs.readFileSync(path.join(__dirname, '..', 'docs', 'handles.json'), 'utf8')
-  );
-  return csv
-    .split('\n')
-    .slice(1)
-    .filter((line) => {
-      if (/UC[\w-]{22}/.test(line)) return true;
-      const m = line.match(/@([A-Za-z0-9._-]+)/);
-      return m ? Boolean(handles['@' + m[1].toLowerCase()]) : false;
-    }).length;
-}
-
 /** Rows exist as empty shells while their videos load, so "a row" means a
  *  filled one. */
 const filled = (page) => page.locator('.row:not(.loading)');
 
 async function loadGrid(page) {
+  await stubSheet(page);
   await page.goto('/index.html');
-  const n = await expectedChannelCount();
-  await expect(filled(page)).toHaveCount(n, { timeout: 90_000 });
+  await expect(filled(page)).toHaveCount(FIXTURE_CHANNELS.length, { timeout: 90_000 });
   await expect(page.locator('#status')).toHaveText('');
-  return n;
+  return FIXTURE_CHANNELS.length;
 }
 
 test('renders one row per channel listed in the Sheet', async ({ page }) => {

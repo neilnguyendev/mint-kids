@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { stubSheet } = require('./helpers');
 
 /**
  * The daily screen-time budget. The countdown has to survive the app being
@@ -56,6 +57,7 @@ test('the countdown actually counts down', async ({ page }) => {
 test('the countdown stays visible over the player', async ({ page }) => {
   // The moment a child most needs to see time running out is mid-video, so the
   // clock has to sit above the player rather than behind it.
+  await stubSheet(page);
   await page.goto('/index.html');
   await expect(page.locator('.row:not(.loading)').first()).toBeVisible({ timeout: 90_000 });
   await page.waitForTimeout(2000);
@@ -110,6 +112,7 @@ test('when the budget is spent it says so and nothing plays', async ({ page }) =
 test('a video already playing is stopped when time runs out', async ({ page }) => {
   // One second left, so the budget expires while the video is on screen.
   await seed(page, { day: todayKey(), usedMs: QUOTA_MS - 1500 });
+  await stubSheet(page);
   await page.goto('/index.html');
   await expect(page.locator('.row:not(.loading)').first()).toBeVisible({ timeout: 90_000 });
 

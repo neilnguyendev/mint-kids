@@ -11,10 +11,12 @@ Run after adding a channel to the Sheet by @handle:
 
     python3 scripts/resolve-handles.py
 """
+import datetime
 import json
 import os
 import re
 import sys
+import time
 import urllib.request
 
 SHEET_CSV = (
@@ -22,15 +24,28 @@ SHEET_CSV = (
     "400qvNW_P1EUGBcGA9BfXJZV3VQUD_m2afqdFull9zxBJv3dpDsAmX"
     "/pub?gid=0&single=true&output=csv"
 )
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                   "docs", "handles.json")
+DOCS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
+OUT = os.path.join(DOCS, "handles.json")
+SNAPSHOT = os.path.join(DOCS, "channels.json")
 UA = {"User-Agent": "Mozilla/5.0"}
 
 
-def get(url):
-    return urllib.request.urlopen(
-        urllib.request.Request(url, headers=UA), timeout=30
-    ).read().decode("utf-8", "replace")
+def get(url, attempts=4):
+    """Fetch a URL, retrying: the published Sheet is throttled and drops requests
+    often enough that a single attempt regularly times out."""
+    last = None
+    for i in range(attempts):
+        try:
+            return urllib.request.urlopen(
+                urllib.request.Request(url, headers=UA), timeout=30
+            ).read().decode("utf-8", "replace")
+        except Exception as exc:            # noqa: BLE001 - any failure is retryable here
+            last = exc
+            if i < attempts - 1:
+                wait = 3 * (i + 1)
+                print("  ... %s, thu lai sau %ds" % (type(exc).__name__, wait))
+                time.sleep(wait)
+    raise last
 
 
 def resolve(handle):
@@ -72,6 +87,21 @@ def main():
         json.dump(out, f, indent=2, sort_keys=True)
         f.write("\n")
     print("\nwrote %s (%d handles)" % (OUT, len(out)))
+
+    # A same-origin copy of the Sheet, committed alongside the app. Reading the
+    # published Sheet from a browser is throttled hard — measured at three
+    # successes in eight tries, the rest hanging past twelve seconds — so the app
+    # needs something dependable to fall back to on a TV that has never managed a
+    # successful live read. The Sheet is still authoritative when it answers.
+    snapshot = {
+        "syncedAt": datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0).isoformat(),
+        "csv": get(SHEET_CSV),
+    }
+    with open(SNAPSHOT, "w") as f:
+        json.dump(snapshot, f, indent=2)
+        f.write("\n")
+    print("wrote %s (%d bytes of CSV)" % (SNAPSHOT, len(snapshot["csv"])))
     return 1 if failed else 0
 
 
