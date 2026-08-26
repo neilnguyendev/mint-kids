@@ -3,7 +3,7 @@
         id="http://mintkids.local/spike" version="0.0.1" viewmodes="maximized">
     <!-- Hosted app: the TV loads this URL instead of a local file, so the page
          has a real http(s) origin and YouTube gets a usable Referer. -->
-    <content src="http://192.168.1.6:8080/index.html"/>
+    <content src="https://neilnguyendev.github.io/mint-kids/index.html"/>
 
     <!-- WARP: without this the app cannot reach any network resource. -->
     <access origin="*" subdomains="true"/>
