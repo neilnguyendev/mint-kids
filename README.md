@@ -52,6 +52,24 @@ WebView caches the hosted entry page hard enough that a restart otherwise
 re-renders the old build without even contacting the server. Changing
 `index.html` or `config.xml` means repackaging and reinstalling the `.wgt`.
 
+## Remote vocabulary
+
+The player screen has two modes, and the arrow keys mean different things in
+each — the same split the YouTube TV app uses, so the household already knows it.
+
+| | Watching | Grid pulled up over the video |
+|---|---|---|
+| Down | open the grid | next row |
+| Up | — | previous row; closes the grid from the top row |
+| Left / Right | scrub -10s / +10s | move along the row |
+| OK | pause / resume | play that video |
+| Back | leave the video | close the grid, keep watching |
+
+Left and right deliberately do *not* skip tracks: a stray press should not lose
+the thing the child was watching. Because the player runs with `controls: 0`
+there is no scrubber, so a seek draws its own readout — without it a press looks
+like nothing happened.
+
 ## Screen time
 
 A countdown sits in the top-right corner and stays above the player, because the

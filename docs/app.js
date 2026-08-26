@@ -28,6 +28,13 @@ var QUOTA_KEY = 'mintkids.quota';
 
 var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27 };
 
+// How far one press of left/right jumps while a video is playing.
+var SEEK_STEP_SECONDS = 10;
+
+// How long the seek readout stays up. Long enough for a child to read a
+// timestamp, short enough not to camp on the picture.
+var SEEK_HINT_MS = 2500;
+
 // ------------------------------------------------------------------ dom -----
 
 var app = document.createElement('div');
@@ -35,7 +42,8 @@ app.id = 'app';
 app.innerHTML =
   '<header id="top"><h1>Mint Kids</h1><div id="status">Đang tải danh sách kênh…</div></header>' +
   '<main id="rows"></main>' +
-  '<div id="stage" hidden><div id="player"></div><div id="nowplaying"></div></div>' +
+  '<div id="stage" hidden><div id="player"></div><div id="nowplaying"></div>' +
+    '<div id="seekhint" hidden></div></div>' +
   '<div id="clock"><span id="clock-time">--:--</span></div>' +
   '<div id="timeup" hidden><div class="panel">' +
     '<div class="big">Đã xem hết giờ hôm nay</div>' +
@@ -50,6 +58,7 @@ var nowEl = document.getElementById('nowplaying');
 var clockEl = document.getElementById('clock');
 var clockTimeEl = document.getElementById('clock-time');
 var timeUpEl = document.getElementById('timeup');
+var seekHintEl = document.getElementById('seekhint');
 
 function setStatus(text, isError) {
   statusEl.textContent = text || '';
@@ -348,14 +357,21 @@ function move(dRow, dCol) {
 
 var stagePlayer = null, playing = null, pendingVideoId = null;
 
+// While a video is on screen the grid can be pulled up over it, the way the
+// YouTube TV app does: the video keeps playing behind and the rows become the
+// way to pick the next one.
+var overVideo = false;
+var seekHintTimer = null;
+
 /** new YT.Player() hands back an object immediately, but its methods are only
  *  attached once the iframe has loaded. Calling one before then throws, which
  *  once left the player stuck open because closeStage() died half way through.
  *  Every call goes through here. */
-function callPlayer(method, arg) {
+function callPlayer(method) {
+  var args = Array.prototype.slice.call(arguments, 1);
   try {
     if (stagePlayer && typeof stagePlayer[method] === 'function') {
-      return stagePlayer[method](arg);
+      return stagePlayer[method].apply(stagePlayer, args);
     }
   } catch (e) {}
   return null;
@@ -412,8 +428,61 @@ function advance() {
   play(playing.row, next);
 }
 
+function formatTime(seconds) {
+  if (!isFinite(seconds) || seconds < 0) seconds = 0;
+  var total = Math.floor(seconds);
+  var m = Math.floor(total / 60);
+  var ss = total % 60;
+  return m + ':' + (ss < 10 ? '0' : '') + ss;
+}
+
+/**
+ * Seeking needs its own readout. The player runs with controls:0, so there is no
+ * scrubber and no other sign that a press did anything — without this, pressing
+ * left just looks broken until the picture happens to change.
+ */
+function seek(deltaSeconds) {
+  var at = callPlayer('getCurrentTime');
+  var total = callPlayer('getDuration');
+  if (typeof at !== 'number') return;
+
+  var target = Math.max(0, at + deltaSeconds);
+  if (typeof total === 'number' && total > 0) target = Math.min(target, total - 1);
+  callPlayer('seekTo', target, true);
+
+  seekHintEl.textContent =
+    (deltaSeconds < 0 ? '\u25C0\u25C0  ' : '\u25B6\u25B6  ') + formatTime(target) +
+    (typeof total === 'number' && total > 0 ? ' / ' + formatTime(total) : '');
+  seekHintEl.hidden = false;
+  clearTimeout(seekHintTimer);
+  seekHintTimer = setTimeout(function () { seekHintEl.hidden = true; }, SEEK_HINT_MS);
+}
+
+/** Pull the grid up over the playing video. */
+function openOverVideo() {
+  if (stageEl.hidden || overVideo) return;
+  overVideo = true;
+  app.classList.add('over-video');
+  // Start from whatever is playing, so the child sees where they are before
+  // moving — not a highlight parked somewhere unrelated.
+  if (playing && rows[playing.row]) {
+    focus.row = playing.row;
+    focus.col = playing.col;
+  }
+  applyFocus(true);
+}
+
+function closeOverVideo() {
+  if (!overVideo) return;
+  overVideo = false;
+  app.classList.remove('over-video');
+  seekHintEl.hidden = true;
+}
+
 function closeStage() {
   // Hide first: whatever the player does next, the viewer is already out.
+  closeOverVideo();
+  seekHintEl.hidden = true;
   stageEl.hidden = true;
   playing = null;
   pendingVideoId = null;
@@ -532,14 +601,41 @@ document.addEventListener('keydown', function (ev) {
     return;
   }
   if (!stageEl.hidden) {
-    if (code === KEY.BACK || code === KEY.ESC) { ev.preventDefault(); closeStage(); }
+    ev.preventDefault();
+
+    // Grid pulled up over the video: the arrows belong to the grid, and the
+    // video carries on playing behind it.
+    if (overVideo) {
+      if (code === KEY.BACK || code === KEY.ESC) closeOverVideo();
+      else if (code === KEY.LEFT) move(0, -1);
+      else if (code === KEY.RIGHT) move(0, 1);
+      else if (code === KEY.DOWN) move(1, 0);
+      else if (code === KEY.UP) {
+        // Up from the top row is the way back to the video, the same press that
+        // opened the grid, reversed.
+        if (focus.row === 0) closeOverVideo();
+        else move(-1, 0);
+      } else if (code === KEY.ENTER) {
+        closeOverVideo();
+        play(focus.row, focus.col);
+      }
+      return;
+    }
+
+    // Watching. Left and right scrub within this video rather than skipping to
+    // another one — jumping tracks on a stray press is how a child loses the
+    // thing they were watching.
+    if (code === KEY.BACK || code === KEY.ESC) closeStage();
+    else if (code === KEY.DOWN) openOverVideo();
+    else if (code === KEY.LEFT) seek(-SEEK_STEP_SECONDS);
+    else if (code === KEY.RIGHT) seek(SEEK_STEP_SECONDS);
     else if (code === KEY.ENTER) {
-      ev.preventDefault();
       callPlayer(callPlayer('getPlayerState') === YT.PlayerState.PLAYING
         ? 'pauseVideo' : 'playVideo');
-    } else if (code === KEY.RIGHT) { ev.preventDefault(); advance(); }
+    }
     return;
   }
+
   if (code === KEY.LEFT) { ev.preventDefault(); move(0, -1); }
   else if (code === KEY.RIGHT) { ev.preventDefault(); move(0, 1); }
   else if (code === KEY.UP) { ev.preventDefault(); move(-1, 0); }
