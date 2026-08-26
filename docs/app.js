@@ -23,7 +23,8 @@ var AUTOPLAY_NEXT = true;
 
 // Daily screen-time budget. It is spent whenever the app is open and on screen,
 // not only while a video plays — browsing the grid is screen time too.
-var QUOTA_MINUTES = 30;
+// TEMPORARY: 2 instead of 30 so the limit can be exercised by hand. Put it back.
+var QUOTA_MINUTES = 2;
 var QUOTA_KEY = 'mintkids.quota';
 
 // The channel list comes from a third party we do not control, so the wait for
@@ -559,9 +560,13 @@ var quota = (function () {
   var lastTick = Date.now();
   var exhausted = false;
 
+  // The day rolls over at midnight in Vietnam, wherever the device thinks it is.
+  // Reading the TV's own clock would hand out a second allowance to a set whose
+  // timezone is wrong or unset. Vietnam is UTC+7 year round, with no daylight
+  // saving, so a fixed offset is exact rather than an approximation.
   function todayKey() {
-    var d = new Date();
-    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    var vn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    return vn.getUTCFullYear() + '-' + (vn.getUTCMonth() + 1) + '-' + vn.getUTCDate();
   }
 
   function read() {
@@ -602,9 +607,10 @@ var quota = (function () {
     var elapsed = now - lastTick;
     lastTick = now;
 
-    // A suspended app — TV switched off, app backgrounded — can come back with
-    // an enormous gap. Charging that to the child would silently eat the day,
-    // so only time the app was actually on screen is counted.
+    // Time only runs while the app is open and on screen. Closing it pauses the
+    // countdown rather than letting the clock keep draining in the background:
+    // a suspended app — closed, backgrounded, TV switched off — comes back with
+    // an enormous gap, and charging that would silently eat the whole day.
     if (document.hidden) return;
     if (elapsed < 0 || elapsed > 5000) elapsed = 0;
 
@@ -616,9 +622,20 @@ var quota = (function () {
   function tick() {
     spend();
     render();
+
     if (!exhausted && remaining() === 0) {
       exhausted = true;
       onExhausted();
+      return;
+    }
+
+    // Midnight can arrive while the app is sitting on the out-of-time screen —
+    // a child who ran out at 23:58 should get their time back at 00:00 without
+    // having to be told to restart the app.
+    if (exhausted && remaining() > 0) {
+      exhausted = false;
+      timeUpEl.hidden = true;
+      applyFocus();
     }
   }
 
