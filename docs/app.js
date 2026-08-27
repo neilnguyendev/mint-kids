@@ -825,7 +825,7 @@ var pinPad = (function () {
   var LAYOUT = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['\u232B', '0', '']];
   var secret = null;
   var entered = '';
-  var focus = { row: 0, col: 1 };
+  var focus = { row: 0, col: 0 };   // starts on 1, the top-left key
   var buttons = [];
 
   function build() {
@@ -937,7 +937,7 @@ var pinPad = (function () {
     open: function () {
       if (!secret) return;
       entered = '';
-      focus = { row: 0, col: 1 };
+      focus = { row: 0, col: 0 };
       pinBoxEl.hidden = false;
       renderCells();
       renderFocus();

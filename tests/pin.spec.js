@@ -153,13 +153,13 @@ test.describe('with a PIN set in the Sheet', () => {
 
   test('the keypad is usable with only the arrows and OK', async ({ page }) => {
     // The remote has no number buttons, so walking the grid must work on its own.
-    await expect(page.locator('.key.focused')).toHaveText('2');
+    await expect(page.locator('.key.focused')).toHaveText('1');
 
     const press = async (moves) => {
       for (const m of moves) await page.keyboard.press(m);
       await page.keyboard.press('Enter');
     };
-    await press(['ArrowDown', 'ArrowRight']);              // 2 -> 5 -> 6 ... 4
+    await press(['ArrowDown', 'ArrowRight']);              // 1 -> 4 -> 5
     await expect(page.locator('.pin-cells span.filled')).toHaveCount(1);
   });
 
