@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { SHEET_GLOB, csvFor } = require('./helpers');
+const { SHEET_GLOB, csvFor, seedOutOfTime } = require('./helpers');
 
 /**
  * The channel list comes from a published Google Sheet — a third party, over the
@@ -105,4 +105,21 @@ test('with every source gone it says so rather than sitting blank', async ({ pag
     timeout: 30_000,
   });
   await expect(page.locator('.row')).toHaveCount(0);
+});
+
+
+test('the shipped copy carries the settings, or the parent is locked out', async ({ page }) => {
+  // The snapshot exists so a TV that cannot reach the Sheet still works. It was
+  // generated before the Sheet had a PIN column, so falling back to it produced
+  // the out-of-time screen with no keypad at all — the parent locked out at
+  // exactly the moment the PIN is for. Regenerating docs/channels.json is part
+  // of changing a setting, and this fails if that is forgotten.
+  await seedOutOfTime(page);
+  await page.route(SHEET_GLOB, (route) => route.abort());
+  await page.goto('/index.html');
+
+  await expect(page.locator('#timeup')).toBeVisible();
+  await expect(page.locator('#status')).toContainText('kèm theo app');
+  await expect(page.locator('#pinbox')).toBeVisible();
+  await expect(page.locator('.pin-cells span')).toHaveCount(4);
 });

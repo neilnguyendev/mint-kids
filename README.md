@@ -40,6 +40,12 @@ The screen says which one it fell back to. `scripts/resolve-handles.py` refreshe
 both `handles.json` and `channels.json`, and retries, because the Sheet drops
 server-side requests too.
 
+**Rerun it after changing a setting in the Sheet.** The snapshot carries the
+allowance and the PIN as well as the channels, so a stale one hands the app an
+old PIN — or, if it predates the settings entirely, no PIN at all, which locks
+the parent out of the out-of-time screen at exactly the moment the PIN is for. A
+test covers that case.
+
 Every UI test stubs the Sheet for the same reason; the live one has a single
 dedicated test that asserts it is reachable *at all* rather than on demand.
 
