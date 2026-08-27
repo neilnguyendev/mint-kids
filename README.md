@@ -143,9 +143,16 @@ Sheet's own value arrives — the countdown has to be running before the Sheet
 answers, or the first seconds of every session would be free.
 
 The countdown badge is a focus stop: pressing up from the top row of the grid, or
-from a playing video, lands on it, and OK there opens the PIN screen so a parent
-can hand back the day without waiting for it to run out. Back cancels and returns
-to whatever was on — a video carries on playing throughout.
+from a playing video, lands on it. OK there offers two things:
+
+- **Đặt lại thời gian** — the PIN, then the whole day back
+- **Khoá luôn** — end the day now, no PIN asked for
+
+Locking early needs no PIN because it takes time away rather than granting it,
+and the PIN is still there to undo it; guarding it would only slow the parent
+down at the moment they want it. Back cancels and returns to whatever was on — a
+video carries on playing throughout, and topping the time up does not interrupt
+it.
 
 The same screen serves both errands, and they differ in one way that matters: a
 reset the parent opened can be dismissed with Back, while running out of time

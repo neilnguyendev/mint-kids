@@ -59,24 +59,98 @@ test('up from a lower row is ordinary navigation, not a jump to the badge', asyn
   await expect(page.locator('.row:not(.loading)').nth(0).locator('.card').nth(0)).toHaveClass(/focused/);
 });
 
-test('OK on the badge opens the reset, and Back changes nothing', async ({ page }) => {
+test('OK on the badge offers both errands, and Back changes nothing', async ({ page }) => {
   await openGrid(page);
   const before = await clockSeconds(page);
 
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
   await expect(page.locator('#timeup')).toBeVisible();
-  await expect(page.locator('#timeup .big')).toHaveText('Đặt lại thời gian');
-  // Opened deliberately, so it goes straight to the keypad — the extra button
-  // would only be a second press for something already asked for.
-  await expect(page.locator('#pinbox')).toBeVisible();
-  await expect(page.locator('#resetbtn')).toBeHidden();
-  await page.screenshot({ path: 'test-results/pin-reset.png' });
+  await expect(page.locator('#timeup .big')).toHaveText('Thời gian xem');
+
+  // Two ways to go, and no keypad until one is chosen.
+  await expect(page.locator('#resetbtn')).toBeVisible();
+  await expect(page.locator('#lockbtn')).toBeVisible();
+  await expect(page.locator('#pinbox')).toBeHidden();
+  await expect(page.locator('.action.focused')).toHaveText('Đặt lại thời gian');
+  await page.screenshot({ path: 'test-results/two-actions.png' });
 
   await page.keyboard.press('Escape');
   await expect(page.locator('#timeup')).toBeHidden();
   // Cancelling is not a reset: the countdown carries on from where it was.
   expect(await clockSeconds(page)).toBeLessThanOrEqual(before);
+});
+
+test('left and right choose between the two actions', async ({ page }) => {
+  await openGrid(page);
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Enter');
+
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('.action.focused')).toHaveText('Khoá luôn');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('.action.focused')).toHaveText('Đặt lại thời gian');
+  // The ends hold rather than wrapping round.
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('.action.focused')).toHaveText('Đặt lại thời gian');
+});
+
+test('Đặt lại thời gian leads to the keypad', async ({ page }) => {
+  await openGrid(page);
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#pinbox')).toBeVisible();
+  await expect(page.locator('#actions')).toBeHidden();
+  await page.screenshot({ path: 'test-results/pin-reset.png' });
+});
+
+test('Khoá luôn ends the day on the spot, with no PIN asked for', async ({ page }) => {
+  // It takes time away rather than granting it, and the PIN is still there to
+  // undo it — so guarding it would only slow down the parent.
+  await openGrid(page);
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#timeup .big')).toHaveText('Đã xem hết giờ hôm nay');
+  await expect(page.locator('#clock-time')).toHaveText('0:00');
+  // The out-of-time screen offers only its one way onward.
+  await expect(page.locator('#lockbtn')).toBeHidden();
+  await expect(page.locator('#resetbtn')).toBeVisible();
+  await page.screenshot({ path: 'test-results/locked.png' });
+});
+
+test('locking early is undone by the PIN like any other end of day', async ({ page }) => {
+  await openGrid(page, withPin(9));
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#clock-time')).toHaveText('0:00');
+
+  await page.keyboard.press('Enter');                 // Đặt lại thời gian
+  for (const d of '1234') await page.keyboard.press(`Digit${d}`);
+
+  await expect(page.locator('#timeup')).toBeHidden();
+  expect(await clockSeconds(page)).toBeGreaterThan(8 * 60);
+});
+
+test('a video is stopped when the day is locked early', async ({ page }) => {
+  await openGrid(page);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#stage')).toBeVisible();
+  await page.waitForTimeout(3000);
+
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('#stage')).toBeHidden();
+  await expect(page.locator('#timeup .big')).toHaveText('Đã xem hết giờ hôm nay');
 });
 
 test('the right code from the badge hands the day back', async ({ page }) => {
@@ -85,7 +159,8 @@ test('the right code from the badge hands the day back', async ({ page }) => {
   const before = await clockSeconds(page);
 
   await page.keyboard.press('ArrowUp');
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');                 // the two actions
+  await page.keyboard.press('Enter');                 // Đặt lại thời gian
   for (const d of '1234') await page.keyboard.press(`Digit${d}`);
 
   await expect(page.locator('#timeup')).toBeHidden();
@@ -105,6 +180,7 @@ test('the badge is reachable from a playing video, which keeps playing', async (
 
   await page.keyboard.press('Enter');
   await expect(page.locator('#timeup')).toBeVisible();
+  await page.keyboard.press('Enter');                 // Đặt lại thời gian
   for (const d of '1234') await page.keyboard.press(`Digit${d}`);
 
   // Time restored and the video is still there — the parent topped it up

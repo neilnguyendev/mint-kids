@@ -62,7 +62,10 @@ app.innerHTML =
   '<div id="timeup" hidden><div class="panel">' +
     '<div class="big">Đã xem hết giờ hôm nay</div>' +
     '<div class="small">Mai mình xem tiếp nhé</div>' +
-    '<div id="resetbtn" role="button" hidden>Đặt lại thời gian</div>' +
+    '<div id="actions" hidden>' +
+      '<div id="resetbtn" class="action" role="button">Đặt lại thời gian</div>' +
+      '<div id="lockbtn" class="action" role="button">Khoá luôn</div>' +
+    '</div>' +
     '<div id="pinbox" hidden>' +
       '<div class="pin-label">Bố mẹ nhập mật khẩu để xem thêm</div>' +
       '<div class="pin-cells"></div>' +
@@ -82,7 +85,9 @@ var timeUpEl = document.getElementById('timeup');
 var seekHintEl = document.getElementById('seekhint');
 var timeUpTitleEl = timeUpEl.querySelector('.big');
 var timeUpSubEl = timeUpEl.querySelector('.small');
+var actionsEl = document.getElementById('actions');
 var resetBtnEl = document.getElementById('resetbtn');
+var lockBtnEl = document.getElementById('lockbtn');
 var pinBoxEl = document.getElementById('pinbox');
 var pinCellsEl = pinBoxEl.querySelector('.pin-cells');
 var pinErrorEl = pinBoxEl.querySelector('.pin-error');
@@ -716,6 +721,15 @@ var quota = (function () {
     if (!exhausted && remaining() === 0) { exhausted = true; onExhausted(); }
   }
 
+  /** End the day now. No PIN guards this one: it takes time away rather than
+   *  granting it, and the PIN is still there to undo it. */
+  function lockNow() {
+    write({ day: todayKey(), usedMs: budgetMs });
+    lastTick = Date.now();
+    render();
+    if (!exhausted) { exhausted = true; onExhausted(); }
+  }
+
   /** Hand back the whole day. Used by the parent PIN on the out-of-time screen. */
   function resetToday() {
     write({ day: todayKey(), usedMs: 0 });
@@ -788,6 +802,7 @@ var quota = (function () {
     remaining: remaining,
     setMinutes: setMinutes,
     resetToday: resetToday,
+    lockNow: lockNow,
     isExhausted: function () { return exhausted; }
   };
 })();
@@ -896,7 +911,7 @@ var pinPad = (function () {
       quota.resetToday();
       timeUpEl.hidden = true;
       pinBoxEl.hidden = true;
-      resetBtnEl.hidden = true;
+      actionsEl.hidden = true;
       pinMode = 'timeup';
       blurClock();
       applyFocus();
@@ -931,7 +946,7 @@ var pinPad = (function () {
       secret = value || null;
       if (!buttons.length) build();
       pinBoxEl.hidden = !secret;
-      if (secret && !timeUpEl.hidden && pinStep === 'button') showResetButton();
+      if (secret && !timeUpEl.hidden && pinStep === 'button') showActions();
     },
     isEnabled: function () { return !!secret; },
     open: function () {
@@ -989,34 +1004,66 @@ function openPinScreen(mode) {
   timeUpEl.hidden = false;
 
   if (mode === 'reset') {
-    // Opened deliberately from the badge, so the keypad is what was asked for —
-    // another button in the way would just be a second press.
-    timeUpTitleEl.textContent = 'Đặt lại thời gian';
+    timeUpTitleEl.textContent = 'Thời gian xem';
     timeUpSubEl.textContent = 'Bấm Trở về để huỷ';
-    showPinForm();
+    showActions();
     return;
   }
 
   timeUpTitleEl.textContent = 'Đã xem hết giờ hôm nay';
   timeUpSubEl.textContent = 'Mai mình xem tiếp nhé';
-  showResetButton();
+  showActions();
 }
 
 /** Step one of the out-of-time screen: the message, and one way onward. */
-resetBtnEl.addEventListener('click', function () { showPinForm(); });
+var actionIndex = 0;
 
-function showResetButton() {
+/** Which buttons this screen offers depends on why it opened. Running out of
+ *  time leaves one way onward; a parent who opened it deliberately can also end
+ *  the day early. */
+function visibleActions() {
+  return pinMode === 'reset' ? [resetBtnEl, lockBtnEl] : [resetBtnEl];
+}
+
+function showActions() {
   pinStep = 'button';
   pinBoxEl.hidden = true;
-  resetBtnEl.hidden = false;
-  resetBtnEl.classList.add('focused');
+  actionsEl.hidden = false;
+  lockBtnEl.hidden = pinMode !== 'reset';
+  actionIndex = 0;
+  renderActions();
 }
+
+function renderActions() {
+  var buttons = visibleActions();
+  buttons.forEach(function (el, i) { el.classList.toggle('focused', i === actionIndex); });
+}
+
+function moveAction(delta) {
+  var buttons = visibleActions();
+  actionIndex = Math.max(0, Math.min(buttons.length - 1, actionIndex + delta));
+  renderActions();
+}
+
+function activateAction() {
+  if (visibleActions()[actionIndex] === lockBtnEl) {
+    // Straight to the end of the day — the out-of-time screen takes over.
+    quota.lockNow();
+    return;
+  }
+  showPinForm();
+}
+
+resetBtnEl.addEventListener('click', function () { actionIndex = 0; activateAction(); });
+lockBtnEl.addEventListener('click', function () {
+  actionIndex = visibleActions().indexOf(lockBtnEl);
+  activateAction();
+});
 
 /** Step two: the keypad. */
 function showPinForm() {
   pinStep = 'form';
-  resetBtnEl.hidden = true;
-  resetBtnEl.classList.remove('focused');
+  actionsEl.hidden = true;
   pinPad.open();
 }
 
@@ -1026,7 +1073,7 @@ function cancelPinScreen() {
   if (pinMode !== 'reset') return;
   timeUpEl.hidden = true;
   pinBoxEl.hidden = true;
-  resetBtnEl.hidden = true;
+  actionsEl.hidden = true;
   pinMode = 'timeup';
   applyFocus();
 }
@@ -1044,8 +1091,11 @@ document.addEventListener('keydown', function (ev) {
 
     // Step one of the out-of-time screen: nothing but the way onward.
     if (pinStep === 'button') {
-      if (code === KEY.ENTER) showPinForm();
+      if (code === KEY.LEFT) moveAction(-1);
+      else if (code === KEY.RIGHT) moveAction(1);
+      else if (code === KEY.ENTER) activateAction();
       else if (code === KEY.BACK || code === KEY.ESC) {
+        if (pinMode === 'reset') { cancelPinScreen(); return; }
         try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
       }
       return;
@@ -1056,7 +1106,7 @@ document.addEventListener('keydown', function (ev) {
       // the parent opened it cancels, from the out-of-time screen it returns to
       // the message, which is still not something to dismiss.
       if (pinMode === 'reset') cancelPinScreen();
-      else showResetButton();
+      else showActions();
       return;
     }
     pinPad.handleKey(code);

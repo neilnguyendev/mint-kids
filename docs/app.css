@@ -411,11 +411,18 @@ html, body {
   background: rgba(0, 0, 0, 0.85);
 }
 
-/* Step one of the out-of-time screen. It is the only thing to press there, so
-   it carries the highlight from the moment it appears. */
-#resetbtn {
-  display: inline-block;
+#actions {
   margin-top: 44px;
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+#actions[hidden] { display: none; }
+
+/* Step one of the screen. On the out-of-time screen this is the only thing to
+   press; opened from the badge it sits beside "Khoá luôn". */
+.action {
+  display: inline-block;
   padding: 20px 48px;
   border-radius: 16px;
   background: var(--panel);
@@ -427,8 +434,8 @@ html, body {
   outline-offset: 4px;
   transition: transform 140ms ease, outline-color 140ms ease;
 }
-#resetbtn[hidden] { display: none; }
-#resetbtn.focused {
+.action[hidden] { display: none; }
+.action.focused {
   outline-color: var(--accent);
   transform: scale(1.05);
 }
