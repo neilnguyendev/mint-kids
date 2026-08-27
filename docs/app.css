@@ -31,15 +31,25 @@ html, body {
 
 #top {
   flex: none;
-  padding: var(--safe) var(--safe) 12px;
+  /* Shallower than the safe margin all round: the header is a label, and every
+     pixel it gives up is a pixel of artwork on the first row of cards. */
+  padding: 20px var(--safe) 8px;
   display: flex;
-  align-items: baseline;
-  gap: 24px;
+  align-items: center;
+  gap: 18px;
+}
+
+#logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  flex: none;
+  display: block;
 }
 
 #top h1 {
   margin: 0;
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 700;
   letter-spacing: -0.5px;
   color: var(--accent);
@@ -63,7 +73,7 @@ html, body {
 
 .row h2 {
   margin: 0 0 2px var(--safe);
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -73,7 +83,7 @@ html, body {
    no pointer on a TV to drag one with. */
 .strip {
   display: flex;
-  gap: 20px;
+  gap: 24px;
   overflow-x: auto;
   overflow-y: hidden;
   /* The focused card grows by 6% and paints an outline 7px outside itself, so
@@ -91,7 +101,9 @@ html, body {
 .card {
   flex: 0 0 auto;
   display: block;
-  width: 320px;
+  /* 30% wider than the 320px this started at. On a 1920 panel viewed from a
+     sofa the earlier size read as small; this fits four and a bit per row. */
+  width: 416px;
   padding: 0;
   border: 0;
   background: var(--panel);
@@ -130,11 +142,11 @@ html, body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  margin: 12px 0 16px;
-  padding: 0 14px;
-  font-size: 20px;
-  line-height: 27px;
-  height: 54px;
+  margin: 14px 0 18px;
+  padding: 0 18px;
+  font-size: 25px;
+  line-height: 34px;
+  height: 68px;
   color: var(--dim);
 }
 
@@ -190,7 +202,7 @@ html, body {
    the screen has its final shape from the first moment, but nothing about it
    invites a button press. */
 .row.loading h2 { color: var(--dim); }
-.row.loading .strip { min-height: 262px; }
+.row.loading .strip { min-height: 334px; }
 
 /* ---------------------------------------------------------- screen time --- */
 

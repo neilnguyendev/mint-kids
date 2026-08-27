@@ -46,7 +46,11 @@ var SEEK_HINT_MS = 2500;
 var app = document.createElement('div');
 app.id = 'app';
 app.innerHTML =
-  '<header id="top"><h1>Mint Kids</h1><div id="status">Đang tải danh sách kênh…</div></header>' +
+  '<header id="top">' +
+    '<img id="logo" src="logo.png" alt="">' +
+    '<h1>Mint Kids</h1>' +
+    '<div id="status">Đang tải danh sách kênh…</div>' +
+  '</header>' +
   '<main id="rows"></main>' +
   '<div id="stage" hidden><div id="player"></div><div id="nowplaying"></div>' +
     '<div id="seekhint" hidden></div></div>' +
@@ -598,7 +602,10 @@ var quota = (function () {
     var mm = Math.floor(totalSeconds / 60);
     var ss = totalSeconds % 60;
     clockTimeEl.textContent = mm + ':' + (ss < 10 ? '0' : '') + ss;
-    clockEl.classList.toggle('low', left <= 5 * 60 * 1000 && left > 0);
+    // "Nearly out" has to scale with the budget: a fixed five minutes leaves the
+    // clock permanently amber whenever the allowance is short.
+    var lowFrom = Math.min(5 * 60 * 1000, QUOTA_MS * 0.2);
+    clockEl.classList.toggle('low', left <= lowFrom && left > 0);
     clockEl.classList.toggle('out', left === 0);
   }
 

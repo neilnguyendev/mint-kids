@@ -21,6 +21,25 @@ async function loadGrid(page) {
   return FIXTURE_CHANNELS.length;
 }
 
+test('the app logo sits in the header', async ({ page }) => {
+  // It identifies the app on the TV's own app list too, from tizen/icon.png.
+  await loadGrid(page);
+  const logo = page.locator('#logo');
+  await expect(logo).toBeVisible();
+  expect(await logo.evaluate((el) => el.complete && el.naturalWidth > 0)).toBe(true);
+});
+
+test('cards are large enough to read from a sofa', async ({ page }) => {
+  // A 1920 panel viewed from across a room: four and a bit cards per row, not a
+  // dense grid of thumbnails.
+  await loadGrid(page);
+  const width = await page
+    .locator('.card:not(.focused)')
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().width);
+  expect(width).toBeGreaterThanOrEqual(400);
+});
+
 test('renders one row per channel listed in the Sheet', async ({ page }) => {
   const n = await loadGrid(page);
   expect(n).toBeGreaterThan(1);
