@@ -401,3 +401,12 @@ html, body {
   cursor: default;
   pointer-events: none;
 }
+
+/* The badge is a focus stop when a PIN exists: pressing up from the top row or
+   from a playing video lands here, and OK opens the reset. */
+#clock.focused {
+  outline: 4px solid var(--accent);
+  outline-offset: 4px;
+  transform: scale(1.06);
+  background: rgba(0, 0, 0, 0.85);
+}

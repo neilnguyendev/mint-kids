@@ -50,7 +50,21 @@ async function seedOutOfTime(page) {
   );
 }
 
+/**
+ * Read the countdown as seconds, waiting for it to actually say something first.
+ * The bootstrap loads app.js asynchronously, so straight after a goto the badge
+ * still reads "--:--" — parsing that gives NaN, and a NaN comparison fails in a
+ * way that looks like a real timing bug rather than a test reading too early.
+ */
+async function clockSeconds(page) {
+  const locator = page.locator('#clock-time');
+  await require('@playwright/test').expect(locator).toHaveText(/^\d+:\d\d$/, { timeout: 20_000 });
+  const [m, s] = (await locator.textContent()).split(':');
+  return Number(m) * 60 + Number(s);
+}
+
 module.exports = {
+  clockSeconds,
   SHEET_GLOB,
   FIXTURE_CHANNELS,
   csvFor,

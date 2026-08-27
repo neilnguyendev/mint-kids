@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { stubSheetCsv, seedOutOfTime } = require('./helpers');
+const { clockSeconds, stubSheetCsv, seedOutOfTime } = require('./helpers');
 
 /**
  * The daily allowance and the parent's PIN both come from the Sheet, so a parent
@@ -14,11 +14,6 @@ test.use({ viewport: { width: 1920, height: 1080 } });
 
 const sheet = (rows) => 'YouTube channel,Cài đặt,Giá trị\n' + rows.join('\n') + '\n';
 const CHANNEL = 'https://www.youtube.com/@Numberblocks';
-
-const clockSeconds = async (page) => {
-  const [m, s] = (await page.locator('#clock-time').textContent()).split(':');
-  return Number(m) * 60 + Number(s);
-};
 
 test('the daily allowance comes from the Sheet', async ({ page }) => {
   await stubSheetCsv(page, sheet([`${CHANNEL},số phút,7`]));

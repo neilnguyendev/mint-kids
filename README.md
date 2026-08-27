@@ -142,6 +142,15 @@ not silently eat tomorrow's half hour.
 Sheet's own value arrives — the countdown has to be running before the Sheet
 answers, or the first seconds of every session would be free.
 
+The countdown badge is a focus stop: pressing up from the top row of the grid, or
+from a playing video, lands on it, and OK there opens the PIN screen so a parent
+can hand back the day without waiting for it to run out. Back cancels and returns
+to whatever was on — a video carries on playing throughout.
+
+The same screen serves both errands, and they differ in one way that matters: a
+reset the parent opened can be dismissed with Back, while running out of time
+cannot, or the limit is one button press away from meaningless.
+
 The out-of-time screen is not a dead end: the parent's four-digit PIN, typed on
 an on-screen keypad, hands the day back. The keypad exists because a TV remote
 has no keyboard and the current ones have no number buttons either; it is

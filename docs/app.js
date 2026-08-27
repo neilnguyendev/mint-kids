@@ -79,6 +79,8 @@ var clockEl = document.getElementById('clock');
 var clockTimeEl = document.getElementById('clock-time');
 var timeUpEl = document.getElementById('timeup');
 var seekHintEl = document.getElementById('seekhint');
+var timeUpTitleEl = timeUpEl.querySelector('.big');
+var timeUpSubEl = timeUpEl.querySelector('.small');
 var pinBoxEl = document.getElementById('pinbox');
 var pinCellsEl = pinBoxEl.querySelector('.pin-cells');
 var pinErrorEl = pinBoxEl.querySelector('.pin-error');
@@ -373,6 +375,11 @@ var playlistReader = (function () {
 var rows = [];        // filled rows, kept in Sheet order
 var focus = { row: 0, col: 0 };
 
+// The countdown badge is a focus stop of its own, reached by pressing up from
+// the top row or from a playing video. It is only reachable when a PIN exists,
+// since resetting the day is all it does.
+var clockFocused = false;
+
 /**
  * A row's shell is created immediately, in Sheet order, so channels can be
  * loaded concurrently without the finish order deciding what the viewer sees.
@@ -481,11 +488,13 @@ function observeTitles(record) {
  *  on whichever row happened to load first. Scrolling is only wanted when the
  *  viewer actually pressed something. */
 function applyFocus(scroll) {
+  clockEl.classList.toggle('focused', clockFocused);
   rows.forEach(function (r, ri) {
     r.cards.forEach(function (c, ci) {
-      c.el.classList.toggle('focused', ri === focus.row && ci === focus.col);
+      c.el.classList.toggle('focused', !clockFocused && ri === focus.row && ci === focus.col);
     });
   });
+  if (clockFocused) return;
   var row = rows[focus.row];
   if (!row) return;
   var card = row.cards[focus.col];
@@ -797,6 +806,8 @@ function onExhausted() {
  * With no PIN in the Sheet the whole thing stays hidden — an empty keypad
  * inviting presses that can never work is worse than no keypad.
  */
+var pinMode = 'timeup';
+
 var pinPad = (function () {
   var LAYOUT = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['\u232B', '0', '']];
   var secret = null;
@@ -872,6 +883,8 @@ var pinPad = (function () {
       quota.resetToday();
       timeUpEl.hidden = true;
       pinBoxEl.hidden = true;
+      pinMode = 'timeup';
+      blurClock();
       applyFocus();
       return;
     }
@@ -934,18 +947,77 @@ var pinPad = (function () {
   };
 })();
 
+// ------------------------------------------------- reaching the badge ---
+
+/** Move the highlight onto the countdown. Refused when no PIN is set: the badge
+ *  would be a dead end, since resetting the day is the only thing it offers. */
+function focusClock() {
+  if (!pinPad.isEnabled() || clockFocused) return false;
+  clockFocused = true;
+  applyFocus();
+  return true;
+}
+
+function blurClock() {
+  if (!clockFocused) return;
+  clockFocused = false;
+  applyFocus();
+}
+
+/**
+ * The PIN screen serves two errands, and they differ in one important way: when
+ * the day is spent there is no way past it except the PIN, but when a parent
+ * opens it deliberately they must be able to change their mind.
+ */
+function openPinScreen(mode) {
+  if (!pinPad.isEnabled()) return;
+  pinMode = mode;
+  if (mode === 'reset') {
+    timeUpTitleEl.textContent = 'Đặt lại thời gian';
+    timeUpSubEl.textContent = 'Bấm Trở về để huỷ';
+  } else {
+    timeUpTitleEl.textContent = 'Đã xem hết giờ hôm nay';
+    timeUpSubEl.textContent = 'Mai mình xem tiếp nhé';
+  }
+  timeUpEl.hidden = false;
+  pinPad.open();
+}
+
+/** Leave the PIN screen without using it. Only ever reachable from a reset the
+ *  parent started; being out of time is not something to dismiss. */
+function cancelPinScreen() {
+  if (pinMode !== 'reset') return;
+  timeUpEl.hidden = true;
+  pinBoxEl.hidden = true;
+  pinMode = 'timeup';
+  applyFocus();
+}
+
 // ------------------------------------------------------------------ keys ---
 
 document.addEventListener('keydown', function (ev) {
   var code = ev.keyCode;
 
-  // Out of time: nothing plays, and the only way onward is the parent's PIN.
-  if (quota.isExhausted()) {
+  // The PIN screen is up — either because the day ran out or because a parent
+  // asked for it. Being out of time is not something to dismiss, so only the
+  // second one takes Back as "never mind".
+  if (!timeUpEl.hidden) {
     ev.preventDefault();
-    if (pinPad.handleKey(code)) return;
-    if (code === KEY.BACK) {
+    if (code === KEY.BACK || code === KEY.ESC) {
+      if (pinMode === 'reset') { cancelPinScreen(); return; }
       try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+      return;
     }
+    pinPad.handleKey(code);
+    return;
+  }
+
+  // The countdown badge holds the highlight: the only thing it does is offer
+  // the reset, so OK opens the PIN and everything else steps back down.
+  if (clockFocused) {
+    ev.preventDefault();
+    if (code === KEY.ENTER) openPinScreen('reset');
+    else if (code === KEY.DOWN || code === KEY.BACK || code === KEY.ESC) blurClock();
     return;
   }
   if (!stageEl.hidden) {
@@ -974,6 +1046,7 @@ document.addEventListener('keydown', function (ev) {
     // another one — jumping tracks on a stray press is how a child loses the
     // thing they were watching.
     if (code === KEY.BACK || code === KEY.ESC) closeStage();
+    else if (code === KEY.UP) focusClock();
     else if (code === KEY.DOWN) openOverVideo();
     else if (code === KEY.LEFT) seek(-SEEK_STEP_SECONDS);
     else if (code === KEY.RIGHT) seek(SEEK_STEP_SECONDS);
@@ -986,7 +1059,13 @@ document.addEventListener('keydown', function (ev) {
 
   if (code === KEY.LEFT) { ev.preventDefault(); move(0, -1); }
   else if (code === KEY.RIGHT) { ev.preventDefault(); move(0, 1); }
-  else if (code === KEY.UP) { ev.preventDefault(); move(-1, 0); }
+  else if (code === KEY.UP) {
+    ev.preventDefault();
+    // Above the first row there is only the badge; from any other row this is
+    // ordinary navigation.
+    if (focus.row === 0 && focusClock()) return;
+    move(-1, 0);
+  }
   else if (code === KEY.DOWN) { ev.preventDefault(); move(1, 0); }
   else if (code === KEY.ENTER) { ev.preventDefault(); play(focus.row, focus.col); }
   else if (code === KEY.BACK) {

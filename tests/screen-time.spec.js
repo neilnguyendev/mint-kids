@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
-const { stubSheet, SHEET_GLOB, csvFor, FIXTURE_CHANNELS } = require('./helpers');
+const { clockSeconds, stubSheet, SHEET_GLOB, csvFor, FIXTURE_CHANNELS } = require('./helpers');
 
 /**
  * The daily screen-time budget. It has to survive the app being closed and
@@ -39,11 +39,6 @@ async function seed(page, state) {
     [QUOTA_KEY, JSON.stringify(state)]
   );
 }
-
-const clockSeconds = async (page) => {
-  const [m, s] = (await page.locator('#clock-time').textContent()).split(':');
-  return Number(m) * 60 + Number(s);
-};
 
 test('a fresh day starts at the full budget', async ({ page }) => {
   await page.goto('/index.html');
