@@ -120,32 +120,75 @@ function normKey(text) {
     .replace(/[^a-z0-9]/g, '');
 }
 
-var MINUTE_KEYS = ['sophut', 'sophutmoingay', 'sophuttoida', 'phut', 'minutes', 'minutesperday'];
-var PIN_KEYS = ['matkhau', 'matkhaureset', 'pin', 'password'];
+// Markers looked for *inside* a heading rather than matched against it whole.
+// A parent writes "Số phút tối đa / ngày", not "sophut", and a heading that
+// describes itself should still be understood.
+var MINUTE_MARKERS = ['sophut', 'phut', 'minute'];
+var PIN_MARKERS = ['matkhau', 'pin', 'password'];
+
+function hasMarker(key, markers) {
+  for (var i = 0; i < markers.length; i++) {
+    if (key.indexOf(markers[i]) >= 0) return true;
+  }
+  return false;
+}
+
+var SETTING_READERS = {
+  // Checked before minutes: "Mật khẩu để reset số phút" mentions both, and the
+  // more specific reading is the right one.
+  pin: {
+    markers: PIN_MARKERS,
+    parse: function (text) { return /^\d{4}$/.test(text) ? text : null; }
+  },
+  minutes: {
+    markers: MINUTE_MARKERS,
+    parse: function (text) {
+      var n = parseInt(text, 10);
+      return n > 0 && String(n) === text.replace(/[^0-9]/g, '') ? n : null;
+    }
+  }
+};
 
 /**
- * Settings live in the same sheet as the channels, as a key in one cell and its
- * value in the next. They are read from any row and any column pair, so the
- * parent can put them wherever suits rather than in a reserved position — and a
- * row holding only settings is simply not a channel row.
+ * Settings live in the same sheet as the channels. Two layouts both work,
+ * because both are things a person naturally does with a spreadsheet:
+ *
+ *   a heading with its value underneath      a key beside its value
+ *   ┌───────────────┬─────────┐              ┌──────────┬──────────┬─────┐
+ *   │ Số phút / ngày│ Mật khẩu│              │ <channel>│ số phút  │ 30  │
+ *   ├───────────────┼─────────┤              ├──────────┼──────────┼─────┤
+ *   │ 30            │ 1234    │              │ <channel>│ mật khẩu │ 1234│
+ *
+ * So from the cell naming a setting, the value is looked for to the right first
+ * and then down the same column, taking the first cell that is actually a valid
+ * value for that setting. That also means a heading sitting next to another
+ * heading is skipped rather than read as its value.
  */
 function readSettings(rows) {
   var found = {};
-  rows.forEach(function (cells) {
-    cells.forEach(function (cell, i) {
+
+  rows.forEach(function (cells, rowIndex) {
+    cells.forEach(function (cell, colIndex) {
       var key = normKey(cell);
-      var value = (cells[i + 1] || '').trim();
-      if (!value) return;
-      if (MINUTE_KEYS.indexOf(key) >= 0) {
-        var minutes = parseInt(value, 10);
-        if (minutes > 0) found.minutes = minutes;
-      } else if (PIN_KEYS.indexOf(key) >= 0) {
-        // Anything that is not exactly four digits is not a PIN this keypad can
-        // enter, so it is ignored rather than half-honoured.
-        if (/^\d{4}$/.test(value)) found.pin = value;
+      if (!key) return;
+
+      var name = null;
+      if (hasMarker(key, SETTING_READERS.pin.markers)) name = 'pin';
+      else if (hasMarker(key, SETTING_READERS.minutes.markers)) name = 'minutes';
+      if (!name || found[name] !== undefined) return;
+
+      var candidates = [(cells[colIndex + 1] || '')];
+      for (var r = rowIndex + 1; r < rows.length; r++) {
+        candidates.push((rows[r] || [])[colIndex] || '');
+      }
+
+      for (var i = 0; i < candidates.length; i++) {
+        var value = SETTING_READERS[name].parse(String(candidates[i]).trim());
+        if (value !== null) { found[name] = value; return; }
       }
     });
   });
+
   return found;
 }
 

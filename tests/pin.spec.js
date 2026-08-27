@@ -29,6 +29,38 @@ test('the daily allowance comes from the Sheet', async ({ page }) => {
   await expect.poll(() => clockSeconds(page), { timeout: 30_000 }).toBeGreaterThan(6 * 60);
 });
 
+test('settings can be column headings with the values underneath', async ({ page }) => {
+  // The layout a person actually reaches for in a spreadsheet, and the exact
+  // headings this Sheet uses. The first attempt only read a key beside its
+  // value, so a real sheet configured this way silently had no PIN at all.
+  await stubSheetCsv(
+    page,
+    'YouTube channel,Số phút tối đa / ngày,Mật khẩu để reset số phút (4 số)\n' +
+      `${CHANNEL},8,4271\n` +
+      'https://www.youtube.com/@SciShowKids,,\n'
+  );
+  await seedOutOfTime(page);
+  await page.goto('/index.html');
+
+  await expect(page.locator('#pinbox')).toBeVisible();
+  for (const d of '4271') await page.keyboard.press(`Digit${d}`);
+  await expect(page.locator('#timeup')).toBeHidden();
+  expect(await clockSeconds(page)).toBeGreaterThan(7 * 60);
+});
+
+test('a heading naming both settings is read as the more specific one', async ({ page }) => {
+  // "Mật khẩu để reset số phút" mentions minutes as well as the password.
+  // Reading it as the allowance would set the budget from a PIN.
+  await stubSheetCsv(
+    page,
+    'YouTube channel,Mật khẩu để reset số phút (4 số),Số phút tối đa / ngày\n' +
+      `${CHANNEL},4271,8\n`
+  );
+  await page.goto('/index.html');
+
+  await expect.poll(() => clockSeconds(page), { timeout: 30_000 }).toBeGreaterThan(7 * 60);
+});
+
 test('the key can be written the way a parent would type it', async ({ page }) => {
   // Accents, spacing and case are all folded away, so "Số phút" and "so phut"
   // and "minutes" mean the same thing.

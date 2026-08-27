@@ -93,18 +93,27 @@ like nothing happened.
 
 ## Settings in the Sheet
 
-Two settings live in the same Sheet as the channels, as a key in one cell and its
-value in the next — any row, any pair of adjacent columns, so a parent puts them
-wherever suits:
+Two settings live in the same Sheet as the channels. Either layout works, since
+both are things a person naturally does with a spreadsheet — a heading with its
+value underneath:
+
+| A: YouTube channel | B: Số phút tối đa / ngày | C: Mật khẩu để reset số phút (4 số) |
+|---|---|---|
+| `https://youtube.com/@Numberblocks` | `30` | `1234` |
+
+or a key beside its value:
 
 | A: YouTube channel | B | C |
 |---|---|---|
 | `https://youtube.com/@Numberblocks` | `số phút` | `30` |
 | `https://youtube.com/@SciShowKids` | `mật khẩu` | `1234` |
 
-Keys are matched with accents, case, spaces and punctuation folded away, so
-`Số phút`, `so phut` and `minutes` are the same key; likewise `mật khẩu`,
-`mat khau`, `pin`. A PIN that is not exactly four digits is ignored rather than
+The name is looked for *inside* the cell with accents, case and punctuation
+folded away, so a heading that describes itself is still understood: anything
+containing `số phút` / `phút` / `minute` is the allowance, and anything
+containing `mật khẩu` / `pin` / `password` is the PIN. The PIN is checked first,
+because `Mật khẩu để reset số phút` names both and the more specific reading is
+the right one. A PIN that is not exactly four digits is ignored rather than
 half-honoured, and with no PIN set the keypad never appears — an empty keypad
 inviting presses that cannot work is worse than none.
 

@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
-const { stubSheet } = require('./helpers');
+const { stubSheet, SHEET_GLOB, csvFor, FIXTURE_CHANNELS } = require('./helpers');
 
 /**
  * The daily screen-time budget. It has to survive the app being closed and
@@ -75,6 +75,12 @@ test('closing the app pauses the countdown instead of draining it', async ({ bro
   // The child watches, the app is shut, and time passes with the TV off. None of
   // that gap belongs to them — only the seconds the app was actually on screen.
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  // Stubbed at the context so both visits agree on the budget: the live Sheet
+  // now carries its own value, and picking it up between the two clock readings
+  // looks exactly like time vanishing.
+  await context.route(SHEET_GLOB, (route) =>
+    route.fulfill({ status: 200, contentType: 'text/csv', body: csvFor(FIXTURE_CHANNELS) })
+  );
 
   const first = await context.newPage();
   await first.goto('/index.html');
