@@ -91,6 +91,23 @@ the thing the child was watching. Because the player runs with `controls: 0`
 there is no scrubber, so a seek draws its own readout — without it a press looks
 like nothing happened.
 
+## Settings in the Sheet
+
+Two settings live in the same Sheet as the channels, as a key in one cell and its
+value in the next — any row, any pair of adjacent columns, so a parent puts them
+wherever suits:
+
+| A: YouTube channel | B | C |
+|---|---|---|
+| `https://youtube.com/@Numberblocks` | `số phút` | `30` |
+| `https://youtube.com/@SciShowKids` | `mật khẩu` | `1234` |
+
+Keys are matched with accents, case, spaces and punctuation folded away, so
+`Số phút`, `so phut` and `minutes` are the same key; likewise `mật khẩu`,
+`mat khau`, `pin`. A PIN that is not exactly four digits is ignored rather than
+half-honoured, and with no PIN set the keypad never appears — an empty keypad
+inviting presses that cannot work is worse than none.
+
 ## Screen time
 
 A countdown sits in the top-right corner and stays above the player, because the
@@ -106,7 +123,16 @@ while a video plays. A gap longer than a few seconds is assumed to be the app
 having been suspended and is not charged, so switching the TV off overnight does
 not silently eat tomorrow's half hour.
 
-`QUOTA_MINUTES` at the top of `docs/app.js` is the only knob.
+`QUOTA_MINUTES` at the top of `docs/app.js` is only the default, used until the
+Sheet's own value arrives — the countdown has to be running before the Sheet
+answers, or the first seconds of every session would be free.
+
+The out-of-time screen is not a dead end: the parent's four-digit PIN, typed on
+an on-screen keypad, hands the day back. The keypad exists because a TV remote
+has no keyboard and the current ones have no number buttons either; it is
+navigable with the four arrows and OK alone, and also takes digits directly from
+remotes that can send them. Entry is masked, the fourth digit submits by itself,
+and a wrong code clears the boxes rather than leaving them stuck full.
 
 ## Working on it
 

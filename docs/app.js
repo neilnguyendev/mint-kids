@@ -23,8 +23,12 @@ var AUTOPLAY_NEXT = true;
 
 // Daily screen-time budget. It is spent whenever the app is open and on screen,
 // not only while a video plays — browsing the grid is screen time too.
+// Used only until the Sheet says otherwise; see readSettings.
 // TEMPORARY: 2 instead of 30 so the limit can be exercised by hand. Put it back.
 var QUOTA_MINUTES = 2;
+
+// A parent's PIN is exactly four digits, entered on a keypad with a remote.
+var PIN_LENGTH = 4;
 var QUOTA_KEY = 'mintkids.quota';
 
 // The channel list comes from a third party we do not control, so the wait for
@@ -58,6 +62,12 @@ app.innerHTML =
   '<div id="timeup" hidden><div class="panel">' +
     '<div class="big">Đã xem hết giờ hôm nay</div>' +
     '<div class="small">Mai mình xem tiếp nhé</div>' +
+    '<div id="pinbox" hidden>' +
+      '<div class="pin-label">Bố mẹ nhập mật khẩu để xem thêm</div>' +
+      '<div class="pin-cells"></div>' +
+      '<div class="pin-error">&nbsp;</div>' +
+      '<div class="keypad"></div>' +
+    '</div>' +
   '</div></div>';
 document.body.appendChild(app);
 
@@ -69,6 +79,10 @@ var clockEl = document.getElementById('clock');
 var clockTimeEl = document.getElementById('clock-time');
 var timeUpEl = document.getElementById('timeup');
 var seekHintEl = document.getElementById('seekhint');
+var pinBoxEl = document.getElementById('pinbox');
+var pinCellsEl = pinBoxEl.querySelector('.pin-cells');
+var pinErrorEl = pinBoxEl.querySelector('.pin-error');
+var keypadEl = pinBoxEl.querySelector('.keypad');
 
 function setStatus(text, isError) {
   statusEl.textContent = text || '';
@@ -93,6 +107,46 @@ function parseCsv(text) {
   }
   if (field || row.length) { row.push(field); rows.push(row); }
   return rows.filter(function (r) { return r.some(function (c) { return c.trim(); }); });
+}
+
+/** Fold a spreadsheet heading down to something matchable: lower case, no
+ *  Vietnamese accents, no spaces or punctuation. The parent types these by hand
+ *  into a spreadsheet, so "Số phút", "so phut" and "minutes" must all land. */
+function normKey(text) {
+  return String(text)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+var MINUTE_KEYS = ['sophut', 'sophutmoingay', 'sophuttoida', 'phut', 'minutes', 'minutesperday'];
+var PIN_KEYS = ['matkhau', 'matkhaureset', 'pin', 'password'];
+
+/**
+ * Settings live in the same sheet as the channels, as a key in one cell and its
+ * value in the next. They are read from any row and any column pair, so the
+ * parent can put them wherever suits rather than in a reserved position — and a
+ * row holding only settings is simply not a channel row.
+ */
+function readSettings(rows) {
+  var found = {};
+  rows.forEach(function (cells) {
+    cells.forEach(function (cell, i) {
+      var key = normKey(cell);
+      var value = (cells[i + 1] || '').trim();
+      if (!value) return;
+      if (MINUTE_KEYS.indexOf(key) >= 0) {
+        var minutes = parseInt(value, 10);
+        if (minutes > 0) found.minutes = minutes;
+      } else if (PIN_KEYS.indexOf(key) >= 0) {
+        // Anything that is not exactly four digits is not a PIN this keypad can
+        // enter, so it is ignored rather than half-honoured.
+        if (/^\d{4}$/.test(value)) found.pin = value;
+      }
+    });
+  });
+  return found;
 }
 
 /** A channel id can be pasted bare or inside a /channel/ URL, and works the
@@ -559,7 +613,10 @@ function closeStage() {
  * A timer that runs is better than one that throws on startup.
  */
 var quota = (function () {
-  var QUOTA_MS = QUOTA_MINUTES * 60 * 1000;
+  // The budget starts at the built-in default and is replaced by the Sheet's
+  // value when it arrives — the countdown has to be running before then, or the
+  // first seconds of every session would be free.
+  var budgetMs = QUOTA_MINUTES * 60 * 1000;
   var memory = null;          // fallback when localStorage cannot be used
   var lastTick = Date.now();
   var exhausted = false;
@@ -593,7 +650,24 @@ var quota = (function () {
   }
 
   function remaining() {
-    return Math.max(0, QUOTA_MS - read().usedMs);
+    return Math.max(0, budgetMs - read().usedMs);
+  }
+
+  /** Adopt the budget from the Sheet. Lowering it below what has already been
+   *  spent ends the session immediately, which is the point of lowering it. */
+  function setMinutes(minutes) {
+    if (!(minutes > 0) || minutes * 60 * 1000 === budgetMs) return;
+    budgetMs = minutes * 60 * 1000;
+    render();
+    if (!exhausted && remaining() === 0) { exhausted = true; onExhausted(); }
+  }
+
+  /** Hand back the whole day. Used by the parent PIN on the out-of-time screen. */
+  function resetToday() {
+    write({ day: todayKey(), usedMs: 0 });
+    lastTick = Date.now();
+    exhausted = false;
+    render();
   }
 
   function render() {
@@ -604,7 +678,7 @@ var quota = (function () {
     clockTimeEl.textContent = mm + ':' + (ss < 10 ? '0' : '') + ss;
     // "Nearly out" has to scale with the budget: a fixed five minutes leaves the
     // clock permanently amber whenever the allowance is short.
-    var lowFrom = Math.min(5 * 60 * 1000, QUOTA_MS * 0.2);
+    var lowFrom = Math.min(5 * 60 * 1000, budgetMs * 0.2);
     clockEl.classList.toggle('low', left <= lowFrom && left > 0);
     clockEl.classList.toggle('out', left === 0);
   }
@@ -655,22 +729,177 @@ var quota = (function () {
     document.addEventListener('visibilitychange', function () { lastTick = Date.now(); });
   }
 
-  return { start: start, remaining: remaining, isExhausted: function () { return exhausted; } };
+  return {
+    start: start,
+    remaining: remaining,
+    setMinutes: setMinutes,
+    resetToday: resetToday,
+    isExhausted: function () { return exhausted; }
+  };
 })();
 
 function onExhausted() {
   closeStage();
   timeUpEl.hidden = false;
+  pinPad.open();
 }
+
+// ----------------------------------------------------------- parent PIN ---
+
+/**
+ * The way back from the out-of-time screen: a four digit code from the Sheet,
+ * typed on an on-screen keypad because a TV remote has no keyboard and the
+ * newer ones have no number buttons either.
+ *
+ * With no PIN in the Sheet the whole thing stays hidden — an empty keypad
+ * inviting presses that can never work is worse than no keypad.
+ */
+var pinPad = (function () {
+  var LAYOUT = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['\u232B', '0', '']];
+  var secret = null;
+  var entered = '';
+  var focus = { row: 0, col: 1 };
+  var buttons = [];
+
+  function build() {
+    keypadEl.innerHTML = '';
+    buttons = LAYOUT.map(function (row, r) {
+      var rowEl = document.createElement('div');
+      rowEl.className = 'keypad-row';
+      keypadEl.appendChild(rowEl);
+      return row.map(function (label, c) {
+        var key = document.createElement('div');
+        key.className = 'key' + (label ? '' : ' key-blank');
+        key.textContent = label;
+        if (label) key.addEventListener('click', function () { pressKey(label); });
+        rowEl.appendChild(key);
+        return { el: key, label: label, row: r, col: c };
+      });
+    });
+
+    pinCellsEl.innerHTML = '';
+    for (var i = 0; i < PIN_LENGTH; i++) {
+      pinCellsEl.appendChild(document.createElement('span'));
+    }
+  }
+
+  function renderCells() {
+    var cells = pinCellsEl.children;
+    for (var i = 0; i < cells.length; i++) {
+      // Digits are masked: the code is for the parent, and a child watching
+      // over a shoulder learns it in one go otherwise.
+      cells[i].textContent = i < entered.length ? '\u2022' : '';
+      cells[i].classList.toggle('filled', i < entered.length);
+      cells[i].classList.toggle('active', i === entered.length);
+    }
+  }
+
+  function renderFocus() {
+    buttons.forEach(function (row) {
+      row.forEach(function (key) {
+        key.el.classList.toggle('focused', key.row === focus.row && key.col === focus.col);
+      });
+    });
+  }
+
+  function setError(message) {
+    pinErrorEl.innerHTML = message || '&nbsp;';
+    pinErrorEl.classList.toggle('shown', !!message);
+  }
+
+  function move(dRow, dCol) {
+    var row = focus.row, col = focus.col;
+    for (var i = 0; i < 4; i++) {
+      row = Math.max(0, Math.min(LAYOUT.length - 1, row + dRow));
+      col = Math.max(0, Math.min(LAYOUT[0].length - 1, col + dCol));
+      if (LAYOUT[row][col]) break;          // step over the blank key
+      if (!dRow && !dCol) break;
+    }
+    if (!LAYOUT[row][col]) return;
+    focus.row = row;
+    focus.col = col;
+    renderFocus();
+  }
+
+  function submit() {
+    if (entered === secret) {
+      entered = '';
+      renderCells();
+      setError('');
+      quota.resetToday();
+      timeUpEl.hidden = true;
+      pinBoxEl.hidden = true;
+      applyFocus();
+      return;
+    }
+    entered = '';
+    renderCells();
+    setError('Mật khẩu không đúng');
+    pinCellsEl.classList.remove('wrong');
+    // Restart the animation rather than leaving a second wrong entry silent.
+    void pinCellsEl.offsetWidth;
+    pinCellsEl.classList.add('wrong');
+  }
+
+  function pressKey(label) {
+    if (!secret) return;
+    if (label === '\u232B') {
+      entered = entered.slice(0, -1);
+      setError('');
+      renderCells();
+      return;
+    }
+    if (!/^\d$/.test(label) || entered.length >= PIN_LENGTH) return;
+    setError('');
+    entered += label;
+    renderCells();
+    if (entered.length === PIN_LENGTH) submit();
+  }
+
+  return {
+    setSecret: function (value) {
+      secret = value || null;
+      if (!buttons.length) build();
+      pinBoxEl.hidden = !secret;
+      if (secret && !timeUpEl.hidden) { entered = ''; renderCells(); renderFocus(); }
+    },
+    isEnabled: function () { return !!secret; },
+    open: function () {
+      if (!secret) return;
+      entered = '';
+      focus = { row: 0, col: 1 };
+      pinBoxEl.hidden = false;
+      renderCells();
+      renderFocus();
+      setError('');
+    },
+    handleKey: function (code) {
+      if (!secret) return false;
+      if (code === KEY.LEFT) { move(0, -1); return true; }
+      if (code === KEY.RIGHT) { move(0, 1); return true; }
+      if (code === KEY.UP) { move(-1, 0); return true; }
+      if (code === KEY.DOWN) { move(1, 0); return true; }
+      if (code === KEY.ENTER) { pressKey(LAYOUT[focus.row][focus.col]); return true; }
+      if (code === 8) { pressKey('\u232B'); return true; }
+      // Remotes with a number pad, and the on-screen one Samsung offers, send
+      // plain digit codes — take them directly rather than making the parent
+      // walk the grid.
+      if (code >= 48 && code <= 57) { pressKey(String(code - 48)); return true; }
+      if (code >= 96 && code <= 105) { pressKey(String(code - 96)); return true; }
+      return false;
+    }
+  };
+})();
 
 // ------------------------------------------------------------------ keys ---
 
 document.addEventListener('keydown', function (ev) {
   var code = ev.keyCode;
 
-  // Out of time: only leaving the app still works.
+  // Out of time: nothing plays, and the only way onward is the parent's PIN.
   if (quota.isExhausted()) {
     ev.preventDefault();
+    if (pinPad.handleKey(code)) return;
     if (code === KEY.BACK) {
       try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
     }
@@ -765,6 +994,13 @@ function boot() {
     .then(function (both) {
       var csv = both[0], handleMap = both[1];
       var parsed = parseCsv(csv);
+      // Settings are scanned across every row, header included, because they
+      // are a key/value pair placed wherever suits the parent rather than in a
+      // reserved position.
+      var settings = readSettings(parsed);
+      if (settings.minutes) quota.setMinutes(settings.minutes);
+      pinPad.setSecret(settings.pin);
+
       var body = parsed.slice(1); // drop the header row
       var wanted = [], unresolved = [];
       body.forEach(function (cells) {

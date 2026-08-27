@@ -55,13 +55,20 @@ test('a fresh day starts at the full budget', async ({ page }) => {
 });
 
 test('the countdown actually counts down', async ({ page }) => {
+  await stubSheet(page);
   await page.goto('/index.html');
+
+  const startedAt = Date.now();
   const before = await clockSeconds(page);
   await page.waitForTimeout(3000);
   const after = await clockSeconds(page);
 
+  // Compare against the wall clock that actually elapsed. A loaded machine can
+  // stretch a 3s wait to 6s, and the countdown is right to follow it — asserting
+  // against the requested delay instead makes this fail for being correct.
+  const elapsed = Math.ceil((Date.now() - startedAt) / 1000);
   expect(after).toBeLessThan(before);
-  expect(before - after).toBeLessThanOrEqual(5);   // wall clock, not a runaway loop
+  expect(before - after).toBeLessThanOrEqual(elapsed + 2);
 });
 
 test('closing the app pauses the countdown instead of draining it', async ({ browser }) => {

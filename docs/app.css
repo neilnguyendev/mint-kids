@@ -311,3 +311,93 @@ html, body {
   white-space: nowrap;
 }
 #seekhint[hidden] { display: none; }
+
+/* ----------------------------------------------------------- parent PIN --- */
+
+#pinbox { margin-top: 44px; }
+#pinbox[hidden] { display: none; }
+
+.pin-label {
+  font-size: 26px;
+  color: var(--dim);
+  margin-bottom: 20px;
+}
+
+.pin-cells {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+}
+
+.pin-cells span {
+  width: 78px;
+  height: 96px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 3px solid rgba(255, 255, 255, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  line-height: 1;
+  color: var(--ink);
+}
+
+/* Which box the next digit lands in. Without it the entry gives no sign of
+   progress until a dot appears. */
+.pin-cells span.active { border-color: var(--accent); }
+.pin-cells span.filled { background: rgba(56, 224, 139, 0.12); }
+
+@keyframes pin-wrong {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-12px); }
+  60% { transform: translateX(12px); }
+}
+.pin-cells.wrong { animation: pin-wrong 320ms ease; }
+
+.pin-error {
+  margin-top: 16px;
+  min-height: 34px;
+  font-size: 26px;
+  color: var(--danger);
+  opacity: 0;
+}
+.pin-error.shown { opacity: 1; }
+
+.keypad {
+  margin-top: 22px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.keypad-row { display: flex; gap: 14px; }
+
+.key {
+  width: 104px;
+  height: 84px;
+  border-radius: 14px;
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  outline: 4px solid transparent;
+  outline-offset: 3px;
+  transition: transform 120ms ease, outline-color 120ms ease;
+}
+
+.key.focused {
+  outline-color: var(--accent);
+  transform: scale(1.08);
+}
+
+/* The hole in the bottom row; it holds the layout without inviting a press. */
+.key-blank {
+  background: transparent;
+  cursor: default;
+  pointer-events: none;
+}
