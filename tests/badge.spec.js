@@ -67,7 +67,10 @@ test('OK on the badge opens the reset, and Back changes nothing', async ({ page 
   await page.keyboard.press('Enter');
   await expect(page.locator('#timeup')).toBeVisible();
   await expect(page.locator('#timeup .big')).toHaveText('Đặt lại thời gian');
+  // Opened deliberately, so it goes straight to the keypad — the extra button
+  // would only be a second press for something already asked for.
   await expect(page.locator('#pinbox')).toBeVisible();
+  await expect(page.locator('#resetbtn')).toBeHidden();
   await page.screenshot({ path: 'test-results/pin-reset.png' });
 
   await page.keyboard.press('Escape');

@@ -62,6 +62,7 @@ app.innerHTML =
   '<div id="timeup" hidden><div class="panel">' +
     '<div class="big">Đã xem hết giờ hôm nay</div>' +
     '<div class="small">Mai mình xem tiếp nhé</div>' +
+    '<div id="resetbtn" role="button" hidden>Đặt lại thời gian</div>' +
     '<div id="pinbox" hidden>' +
       '<div class="pin-label">Bố mẹ nhập mật khẩu để xem thêm</div>' +
       '<div class="pin-cells"></div>' +
@@ -81,6 +82,7 @@ var timeUpEl = document.getElementById('timeup');
 var seekHintEl = document.getElementById('seekhint');
 var timeUpTitleEl = timeUpEl.querySelector('.big');
 var timeUpSubEl = timeUpEl.querySelector('.small');
+var resetBtnEl = document.getElementById('resetbtn');
 var pinBoxEl = document.getElementById('pinbox');
 var pinCellsEl = pinBoxEl.querySelector('.pin-cells');
 var pinErrorEl = pinBoxEl.querySelector('.pin-error');
@@ -792,8 +794,15 @@ var quota = (function () {
 
 function onExhausted() {
   closeStage();
-  timeUpEl.hidden = false;
-  pinPad.open();
+  blurClock();
+  openPinScreen('timeup');
+  // With no PIN configured there is no way onward at all, so the screen is just
+  // the message.
+  if (!pinPad.isEnabled()) {
+    timeUpEl.hidden = false;
+    timeUpTitleEl.textContent = 'Đã xem hết giờ hôm nay';
+    timeUpSubEl.textContent = 'Mai mình xem tiếp nhé';
+  }
 }
 
 // ----------------------------------------------------------- parent PIN ---
@@ -807,6 +816,10 @@ function onExhausted() {
  * inviting presses that can never work is worse than no keypad.
  */
 var pinMode = 'timeup';
+// The out-of-time screen shows a button first and the keypad only once it is
+// pressed: a keypad sitting there is an invitation for a child to try codes,
+// and the message is what they are meant to read.
+var pinStep = 'button';
 
 var pinPad = (function () {
   var LAYOUT = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['\u232B', '0', '']];
@@ -883,6 +896,7 @@ var pinPad = (function () {
       quota.resetToday();
       timeUpEl.hidden = true;
       pinBoxEl.hidden = true;
+      resetBtnEl.hidden = true;
       pinMode = 'timeup';
       blurClock();
       applyFocus();
@@ -917,7 +931,7 @@ var pinPad = (function () {
       secret = value || null;
       if (!buttons.length) build();
       pinBoxEl.hidden = !secret;
-      if (secret && !timeUpEl.hidden) { entered = ''; renderCells(); renderFocus(); }
+      if (secret && !timeUpEl.hidden && pinStep === 'button') showResetButton();
     },
     isEnabled: function () { return !!secret; },
     open: function () {
@@ -972,14 +986,37 @@ function blurClock() {
 function openPinScreen(mode) {
   if (!pinPad.isEnabled()) return;
   pinMode = mode;
+  timeUpEl.hidden = false;
+
   if (mode === 'reset') {
+    // Opened deliberately from the badge, so the keypad is what was asked for —
+    // another button in the way would just be a second press.
     timeUpTitleEl.textContent = 'Đặt lại thời gian';
     timeUpSubEl.textContent = 'Bấm Trở về để huỷ';
-  } else {
-    timeUpTitleEl.textContent = 'Đã xem hết giờ hôm nay';
-    timeUpSubEl.textContent = 'Mai mình xem tiếp nhé';
+    showPinForm();
+    return;
   }
-  timeUpEl.hidden = false;
+
+  timeUpTitleEl.textContent = 'Đã xem hết giờ hôm nay';
+  timeUpSubEl.textContent = 'Mai mình xem tiếp nhé';
+  showResetButton();
+}
+
+/** Step one of the out-of-time screen: the message, and one way onward. */
+resetBtnEl.addEventListener('click', function () { showPinForm(); });
+
+function showResetButton() {
+  pinStep = 'button';
+  pinBoxEl.hidden = true;
+  resetBtnEl.hidden = false;
+  resetBtnEl.classList.add('focused');
+}
+
+/** Step two: the keypad. */
+function showPinForm() {
+  pinStep = 'form';
+  resetBtnEl.hidden = true;
+  resetBtnEl.classList.remove('focused');
   pinPad.open();
 }
 
@@ -989,6 +1026,7 @@ function cancelPinScreen() {
   if (pinMode !== 'reset') return;
   timeUpEl.hidden = true;
   pinBoxEl.hidden = true;
+  resetBtnEl.hidden = true;
   pinMode = 'timeup';
   applyFocus();
 }
@@ -1003,9 +1041,22 @@ document.addEventListener('keydown', function (ev) {
   // second one takes Back as "never mind".
   if (!timeUpEl.hidden) {
     ev.preventDefault();
+
+    // Step one of the out-of-time screen: nothing but the way onward.
+    if (pinStep === 'button') {
+      if (code === KEY.ENTER) showPinForm();
+      else if (code === KEY.BACK || code === KEY.ESC) {
+        try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+      }
+      return;
+    }
+
     if (code === KEY.BACK || code === KEY.ESC) {
-      if (pinMode === 'reset') { cancelPinScreen(); return; }
-      try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+      // Back steps out of the keypad rather than off the screen: from a reset
+      // the parent opened it cancels, from the out-of-time screen it returns to
+      // the message, which is still not something to dismiss.
+      if (pinMode === 'reset') cancelPinScreen();
+      else showResetButton();
       return;
     }
     pinPad.handleKey(code);

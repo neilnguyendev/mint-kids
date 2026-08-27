@@ -151,8 +151,13 @@ The same screen serves both errands, and they differ in one way that matters: a
 reset the parent opened can be dismissed with Back, while running out of time
 cannot, or the limit is one button press away from meaningless.
 
-The out-of-time screen is not a dead end: the parent's four-digit PIN, typed on
-an on-screen keypad, hands the day back. The keypad exists because a TV remote
+The out-of-time screen is not a dead end, but the way onward is a step removed:
+it shows the message and a single **Đặt lại thời gian** button, and the keypad
+only appears once that is pressed. A keypad sitting on the screen is an
+invitation for a child to try codes, and the message is the part they are meant
+to read. Back steps out of the keypad, back to the button — not off the screen.
+
+Behind it, the parent's four-digit PIN hands the day back. The keypad exists because a TV remote
 has no keyboard and the current ones have no number buttons either; it is
 navigable with the four arrows and OK alone, and also takes digits directly from
 remotes that can send them. Entry is masked, the fourth digit submits by itself,

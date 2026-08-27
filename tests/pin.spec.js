@@ -37,7 +37,10 @@ test('settings can be column headings with the values underneath', async ({ page
   await seedOutOfTime(page);
   await page.goto('/index.html');
 
+  await expect(page.locator('#resetbtn')).toBeVisible();
+  await page.keyboard.press('Enter');
   await expect(page.locator('#pinbox')).toBeVisible();
+
   for (const d of '4271') await page.keyboard.press(`Digit${d}`);
   await expect(page.locator('#timeup')).toBeHidden();
   expect(await clockSeconds(page)).toBeGreaterThan(7 * 60);
@@ -80,7 +83,34 @@ test.describe('with a PIN set in the Sheet', () => {
     await stubSheetCsv(page, sheet([`${CHANNEL},số phút,6`, `,mật khẩu,4271`]));
     await page.goto('/index.html');
     await expect(page.locator('#timeup')).toBeVisible();
+    // The keypad is behind a button now; these tests are about the keypad.
+    await expect(page.locator('#resetbtn')).toBeVisible();
+    await page.keyboard.press('Enter');
     await expect(page.locator('#pinbox')).toBeVisible();
+  });
+
+  test('the keypad is behind a button, not sitting there to be tried', async ({ page }) => {
+    // Fresh screen: the child is meant to read the message, not find a keypad
+    // inviting them to guess codes.
+    await page.reload();
+    await expect(page.locator('#timeup')).toBeVisible();
+    await expect(page.locator('#resetbtn')).toHaveText('Đặt lại thời gian');
+    await expect(page.locator('#resetbtn')).toHaveClass(/focused/);
+    await expect(page.locator('#pinbox')).toBeHidden();
+    await page.screenshot({ path: 'test-results/timeup-button.png' });
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#pinbox')).toBeVisible();
+    await expect(page.locator('#resetbtn')).toBeHidden();
+  });
+
+  test('Back leaves the keypad but not the screen', async ({ page }) => {
+    // Running out of time still is not dismissible; Back only undoes the step
+    // that opened the keypad.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#resetbtn')).toBeVisible();
+    await expect(page.locator('#pinbox')).toBeHidden();
+    await expect(page.locator('#timeup')).toBeVisible();
   });
 
   test('four boxes wait for four digits, and they are masked', async ({ page }) => {

@@ -120,6 +120,9 @@ test('the shipped copy carries the settings, or the parent is locked out', async
 
   await expect(page.locator('#timeup')).toBeVisible();
   await expect(page.locator('#status')).toContainText('kèm theo app');
+  await expect(page.locator('#resetbtn')).toBeVisible();
+
+  await page.keyboard.press('Enter');
   await expect(page.locator('#pinbox')).toBeVisible();
   await expect(page.locator('.pin-cells span')).toHaveCount(4);
 });

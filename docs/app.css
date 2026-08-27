@@ -410,3 +410,25 @@ html, body {
   transform: scale(1.06);
   background: rgba(0, 0, 0, 0.85);
 }
+
+/* Step one of the out-of-time screen. It is the only thing to press there, so
+   it carries the highlight from the moment it appears. */
+#resetbtn {
+  display: inline-block;
+  margin-top: 44px;
+  padding: 20px 48px;
+  border-radius: 16px;
+  background: var(--panel);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  outline: 4px solid transparent;
+  outline-offset: 4px;
+  transition: transform 140ms ease, outline-color 140ms ease;
+}
+#resetbtn[hidden] { display: none; }
+#resetbtn.focused {
+  outline-color: var(--accent);
+  transform: scale(1.05);
+}
